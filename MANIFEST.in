@@ -1,0 +1,4 @@
+recursive-include src/seekarctools/utils/barcode/ *
+recursive-include src/seekarctools/utils/reportarc/ *
+include src/seekarctools/utils/*.pl
+include src/seekarctools/utils/*.R

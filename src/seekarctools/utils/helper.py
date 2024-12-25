@@ -1,0 +1,232 @@
+import os
+import sys
+import re
+import json
+import gzip
+from collections import defaultdict
+from loguru import logger
+from xopen import xopen
+from cutadapt.adapters import FrontAdapter, BackAdapter, Sequence, RightmostFrontAdapter
+from ._version import __version__
+
+# setup logger
+logger.remove()
+if os.environ.get("seeksoultools_debug", "False")=="True":
+    logger.info("debug: True")
+    logger.add(sys.stderr, level="DEBUG")
+else:
+    logger.info("debug: False")
+    logger.add(sys.stderr, level="INFO")
+
+
+def check_path(path):
+    if not os.path.exists(path):
+        print(f"Error : The path of '{path}' is not exists")
+        sys.exit(1)  # stop
+    else:
+        return path
+
+def include_introns_callback(ctx, param:str, value:bool):
+    # --include-introns
+    if value:
+        return "transcript"
+    else:
+        return "exon"
+
+def abs_path_callback(ctx, param:str, value:bool):
+    return os.path.abspath(value)
+
+def get_file_path(filename:str):
+    return os.path.dirname(os.path.abspath(filename))
+
+def get_utils_path(filename:str):
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(filename))), "utils")
+
+def hamming_distance(s1, s2):
+    return len([(i, j) for i, j in zip(s1, s2) if i != j])
+
+def read_gtf(gtf):
+    """从gtf中获取gene_id和Symbol的对应关系
+    1. 尝试从gene、transcript和exon行，获取对应关系
+    2. 尝试对线粒体Symbol加MT-前缀
+    3. Symbol重复时，并不会做处理
+    """
+    
+    gene_list = []
+    mt_regex = re.compile("^(MT|mt|Mt)-")
+    # gene_id_regex = re.compile("gene_id \"([A-Za-z0-9_\.\-\:/\ ()]+)\"") # '\";'  ???
+    # gene_name_regex = re.compile("gene_name \"([A-Za-z0-9_\.\-\:/\ ()]+)\"")
+    gene_id_regex = re.compile(r'gene_id "(.*?)";')
+    gene_name_regex = re.compile(r'gene_name "(.*?)";')
+    id_names_dict = {}
+    with xopen(gtf) as fh:
+        for line in fh:
+            if not line.strip(): continue
+            if line.startswith("#"): continue
+            tmp = line.strip().split("\t")
+
+            # 处理gene，transcript和exon行
+            if tmp[2] in ("gene", "transcript", "exon"):
+                gene_id = gene_id_regex.search(tmp[-1])
+                if not gene_id:
+                    continue
+                else:
+                    gene_id = gene_id.group(1)
+
+                # keep order?
+                if gene_id not in id_names_dict:
+                    gene_list.append(gene_id)
+                else:
+                    if re.sub(r"^MT-", "", id_names_dict[gene_id]) != gene_id:
+                        continue
+                gene_name = gene_name_regex.search(tmp[-1])
+
+                if gene_name:
+                    gene_name = gene_name.group(1)
+                else:
+                    gene_name = gene_id
+
+                if tmp[0] in ("chrM", "MT", "mt"):
+                    if not mt_regex.match(gene_name):
+                        gene_name = "MT-" + gene_name
+                id_names_dict[gene_id] = gene_name
+    
+    return [[g, id_names_dict[g]] for g in gene_list]
+
+def parse_structure(string:str) -> tuple:
+    """解析接头结构
+
+    使用字母B、L、U、X和T以及数字表示reads结构。
+    B表示barcode部分碱基；
+    L表示linker部分碱基；
+    U表示umi部分碱基；
+    X表示任意碱基，用于占位；
+    T表示T碱基；
+    字母后数字表示碱基长度。
+
+    Args:
+        string: 接头结构描述
+
+    Returns:
+        返回二维tuple,内容为按顺序的各部分结构和长度。
+        例如：
+            当string是B8L8B8L10B8U8,返回:
+            (('B', 8), ('L', 8), ('B', 8), ('L', 10), ('B', 8), ('U', 8))
+    """
+    regex = re.compile(r'([BLUXT])(\d+)')
+    groups = regex.findall(string)
+    return tuple([(_[0], int(_[1])) for _ in groups])
+
+def read_file(file_list: list) -> dict:
+    """准备白名单set
+        Args:
+            file_list: 每段白名单文件的路径
+    """
+    wl_dict = dict()
+    for i, wl_file in enumerate(file_list):
+        white_list = set()
+        with xopen(wl_file, "r") as fh:
+            for l in fh:
+                if l.startswith("#"):
+                    continue
+                la = l.strip()
+                if not la:
+                    continue
+                white_list.add(la)
+        wl_dict[i] = white_list
+    return wl_dict
+
+
+def get_new_bc(bc:str, white_list:set, distance:int)->set:
+    """返回原始barcode各位置错配后的set与白名单set的交集"""
+
+    if distance == 1:
+        BASE_LIST = ["T", "C", "G", "A"]
+        mm_dict = dict()
+        for i, c in enumerate(bc):
+            if c == "N":
+                mm_dict = { bc[:i] + base + bc[i+1:]:f"{i}{base}" for base in BASE_LIST }
+                break  
+            else:
+                mm_dict.update({ bc[:i] + base + bc[i+1:]:f"{i}{base}" for base in BASE_LIST if base!=c })
+                
+        bc_set = set(mm_dict.keys()).intersection(white_list)
+        # return {k: mm_dict[k] for k in bc_set}
+    else:
+        bc_dict = defaultdict(set)
+        for bc_true in white_list:
+            hmm = sum(ch1 != ch2 for ch1,ch2 in zip(bc_true,bc))
+            if hmm <= distance:
+                bc_dict[hmm].add(bc_true)
+                
+        bc_set = set()
+        if len(bc_dict) != 0:
+            sorted_items = sorted(bc_dict.items(), key=lambda x: x[0])
+            bc_set = sorted_items[0][1]
+    
+    return bc_set
+
+class AdapterFilter:
+    """过滤接头"""
+    def __init__(self, adapter1:list=[], adapter2:list=[],):
+        self.adapter1 = [BackAdapter(sequence=_) if p=="3" else RightmostFrontAdapter(sequence=_) for _, p in adapter1]
+        self.adapter2 = [BackAdapter(sequence=_) if p=="3" else RightmostFrontAdapter(sequence=_) for _, p in adapter2]
+    
+    def filter(self, r1=None, r2=None) -> tuple:
+        flag = False
+        if r1 and self.adapter1:
+            # print("######")
+            # print(len(r1))
+            # print(r1.sequence)
+            for _ in self.adapter1:
+                m = _.match_to(r1.sequence)
+                if m:
+                    flag = True
+                    r1 =  m.trimmed(r1)
+                    # print(r1.sequence)
+        if r2 and self.adapter2:
+            for _ in self.adapter2:
+                m = _.match_to(r2.sequence)
+                if m:
+                    flag = True
+                    r2 =  m.trimmed(r2)
+        return flag, r1, r2
+
+class QcStat:
+    """汇总统计"""
+    def __init__(self):
+        self.data = { }
+
+    def update(self, **d):
+        if not self.data:
+            self.data = d
+        else:
+            for k, v in d.items():
+                self.data[k] += v
+
+    @staticmethod
+    def _sort_gc(d):
+        idx_max = max([k[0] for k in d])
+        return {
+            b: [d.get((i, b), 0) for i in range(idx_max+1)] for b in 'ATCGN'
+        }
+
+    @staticmethod
+    def _sort_q(d, phred=33):
+        idx_max = max([k[0] for k in d])
+        q_max = max([ord(k[1])-phred for k in d])
+        return {
+            i: [d.get((i, chr(q+phred)), 0) for q in range(q_max+1)] for i in range(idx_max+1)
+        }
+
+    def save(self, path='summary.json'):
+        tmp = {'__version__': __version__}
+        for k in self.data:
+            if k.endswith('_gc'):
+                tmp[k] = self._sort_gc(self.data[k])
+            elif k.endswith('_q'):
+                tmp[k] = self._sort_q(self.data[k])
+            else:
+                tmp[k] = dict(self.data[k])
+        with open(path, 'w') as fh:
+            json.dump(tmp, fh, indent=4)

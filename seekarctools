@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# This script launches seekarctools on Linux and MacOS
+
+prg=$0
+
+# check if symbolic link
+
+while [ -h "$prg" ] ; do
+    ls=`ls -ld "$prg"`
+    link=`expr "$ls" : '.*-> \(.*\)$'`
+    if expr "$link" : '.*/.*' > /dev/null; then
+        prg="$link"
+    else
+        prg="`dirname $prg`/$link"
+    fi
+done
+
+shell_path=`dirname "$prg"`;
+absolute=`echo $shell_path | grep "^/"`;
+
+# activate env
+if [ -z "$absolute" ]
+then
+    export PATH="`pwd`/$shell_path/bin":$PATH
+    source "`pwd`/$shell_path/bin/activate"
+else
+    export PATH="$shell_path/bin":$PATH
+    source "$shell_path/bin/activate"
+fi
+
+# check if already unpack
+if [ -e "$shell_path/bin/conda-unpack" ]
+then
+    $shell_path/bin/conda-unpack && mv $shell_path/bin/conda-unpack $shell_path/bin/_conda-unpack
+fi
+
+set -o errexit
+seekarctools_py "$@"
+
