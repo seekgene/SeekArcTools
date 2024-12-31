@@ -4,6 +4,7 @@ import json
 import click
 from ..utils.chemistry import CHEMISTRY
 from ..utils.helper import logger, include_introns_callback, check_path
+from ..utils.wrappers import cmd_execute
 
 
 _steps = {
@@ -29,9 +30,9 @@ def arc(obj, steps):
 
 
 @arc.command(help="Gene Expression extract barcode and umi.")
-@click.option("--fq1", "fq1", required=True, type=click.Path(), multiple=True, help="Read1 fq file, can specify multiple times.")
-@click.option("--fq2", "fq2", required=True, type=click.Path(), multiple=True, help="Read2 fq file, can specify multiple times.")
-@click.option("--gexname", required=True, help="Sample name.")
+@click.option("--fq1", "fq1", required=True, type=click.Path(), multiple=True, help="Expression Read1 fq file, can specify multiple times.")
+@click.option("--fq2", "fq2", required=True, type=click.Path(), multiple=True, help="Expression Read2 fq file, can specify multiple times.")
+@click.option("--samplename", required=True, help="Sample name.")
 @click.option("--outdir", default="./", show_default=True, type=click.Path(), help="Output dir.")
 @click.option("--shift", is_flag=True, default=False, show_default=True, help="Shift, used to describe read1 structure.")
 @click.option("--pattern", "shift_pattern", default="A", help="Anchor sequence, used to describe read1 structure.")
@@ -56,10 +57,10 @@ def estep1(obj, **kwargs):
     barcode_main(**kwargs)
 
 @arc.command(help="Gene Expression align reads to genome.")
-@click.option("--fq", required=True, multiple=True, help="Read2 fq file")
+@click.option("--fq", required=True, multiple=True, help="Expression Step1 Read2 fq file")
 @click.option("--genomeDir", "genomeDir", required=True, type=click.Path(), help="Path to dir which store the genome indices.")
 @click.option("--gtf", required=True, type=click.Path(), help="Path to GTF file.")
-@click.option("--gexname", required=True, help="Sample name.")
+@click.option("--samplename", required=True, help="Sample name.")
 @click.option("--outdir", default="./", show_default=True, type=click.Path(), help="Output dir.")
 @click.option("--star_path", "star_path", default="STAR", help="Path to executable STAR aligner.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
@@ -72,7 +73,7 @@ def estep2(obj, **kwargs):
 @arc.command(help="Gene Expression quantifies.")
 @click.option("--bam", required=True, help="Bam file which contain alignment info.")
 @click.option("--outdir", default="./", show_default=True, type=click.Path(), help="Output dir.")
-@click.option("--gexname", required=True, help="Sample name.")
+@click.option("--samplename", required=True, help="Sample name.")
 @click.option("--gtf", required=True, type=click.Path(), help="Path to GTF file.")
 @click.option("--umi_correct_method", type=click.Choice(["cluster", "adjacency", "directional"]), default="adjacency", show_default=True, help="cluster, adjacency, directional")
 @click.option("--expectNum", "expectNum", default=3000, show_default=True, help="Expected number of cells that used as input in cell calling algorithm.")
@@ -88,7 +89,7 @@ def estep3(obj, **kwargs):
 @arc.command(help="cell calling")
 @click.option("--raw_matrix", required=True, help="Raw Feature-barcode matrix.")
 @click.option("--outdir", default="./", show_default=True, type=click.Path(), help="Output dir.")
-@click.option("--gexname", required=True, help="Sample name.")
+@click.option("--samplename", required=True, help="Sample name.")
 @click.option("--expectNum", "expectNum", default=3000, show_default=True, help="Expected number of cells that used as input in cell calling algorithm.")
 @click.option("--forceCell", "forceCell", help="Force pipeline to use this number of cells, skipping cell calling algorithm.",required=False)
 @click.pass_obj
@@ -97,9 +98,9 @@ def callcell(obj, **kwargs):
     cell_calling(**kwargs)
 
 @arc.command(help="ATAC extract cell barcode and umi. cut reads to preserve valid sequences.")
-@click.option("--fq1", "fq1", required=True, type=click.Path(), multiple=True, help="Read1 fq file, can specify multiple times.")
-@click.option("--fq2", "fq2", required=True, type=click.Path(), multiple=True, help="Read2 fq file, can specify multiple times.")
-@click.option("--atacname", required=True, help="Sample name.")
+@click.option("--fq1", "fq1", required=True, type=click.Path(), multiple=True, help="ATAC Read1 fq file, can specify multiple times.")
+@click.option("--fq2", "fq2", required=True, type=click.Path(), multiple=True, help="ATAC Read2 fq file, can specify multiple times.")
+@click.option("--samplename", required=True, help="Sample name.")
 @click.option("--outdir", default="./", show_default=True, type=click.Path(), help="Output dir.")
 @click.option("--shift", is_flag=True, default=False, show_default=True, help="Shift, used to describe read1 structure.")
 @click.option("--pattern", "shift_pattern", default="A", help="Anchor sequence, used to describe read1 structure.")
@@ -114,7 +115,7 @@ def callcell(obj, **kwargs):
 # @click.option("--chemistry", type=click.Choice(["DDV1", "DDV2", "DDVS", "DD5V1", "MM", "MM-D", "DD-Q", "custom"]), help="DDV1, DDV2, DDVS, DD5V1, MM, MM-D, DD-Q.")
 @click.pass_obj
 def astep1(obj, **kwargs):
-    kwargs["chemistry"] = "DD-AG"
+    kwargs["chemistry"] = "DD_AG"
     from ..utils.atacbarcode import check_atac_options
     chemistry_kwargs = check_atac_options(**kwargs)
     kwargs.update(chemistry_kwargs)
@@ -122,6 +123,7 @@ def astep1(obj, **kwargs):
         json.dump(kwargs, fh, indent=4)
     from ..utils.atacbarcode import barcode_main
     barcode_main(**kwargs)
+    kwargs["atacname"] = f'{kwargs["samplename"]}_A'
     kwargs["atacjson"] = os.path.join(kwargs["outdir"], f"{kwargs['atacname']}_summary.json")
     kwargs["step1afq1"] = os.path.join(kwargs["outdir"], "step1", f"{kwargs['atacname']}_1.fq.gz")
     kwargs["step1afq2"] = os.path.join(kwargs["outdir"], "step1", f"{kwargs['atacname']}_2.fq.gz")
@@ -129,11 +131,10 @@ def astep1(obj, **kwargs):
     cutreads(**kwargs)
 
 @arc.command(help="ATAC align reads to genome.")
-@click.option("--afq", required=True, multiple=True, help="step1 Read1 Read2 fq file")
+@click.option("--afq", required=True, multiple=True, help="ATAC Step1 Read1 Read2 cut fq file")
 @click.option("--genomefa", "genomefa", required=True, type=click.Path(), help="Path to genome fasta file.")
-@click.option("--atacname", required=True, help="ATAC Sample name.")
+@click.option("--samplename", required=True, help="Sample name.")
 @click.option("--outdir", default="./", show_default=True, type=click.Path(), help="Output dir.")
-@click.option("--bwa_path", "bwa_path", default="bwa", help="Path to executable bwa aligner.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
 @click.pass_obj
 def astep2(obj, **kwargs):
@@ -143,50 +144,44 @@ def astep2(obj, **kwargs):
 
 @arc.command(help="ATAC quantifies.")
 @click.option('--bam', required=True,help='atac. step2/bwa_pe/asample_mem_pe_Sort.bam')
-@click.option('--atacjson', required=True,help='atac. summary.json ')
 @click.option("--outdir", default="./step3/", show_default=True, type=click.Path(), help="Output dir.")
-@click.option('--atacname', required=True,help='sample name')
+@click.option('--samplename', required=True,help='Sample name.')
 @click.option('--filtercb', required=True,help='gex. step3/filtered_feature_bc_matrix/barcodes.tsv.gz')
 @click.option('--countxls', required=True,help='gex. step3/counts.xls')
-@click.option('--species', type=click.Choice(["human", "mouse"]), help="human or mouse.")
-@click.option('--refpath', required=True,help='reference path')
-@click.option('--bedtoolspath', default="bedtools",help='bedtools path')
-@click.option('--gunzippath', default="gunzip",help='gunzip path')
-@click.option('--bgzippath', default="bgzip",help='bgzip path')
-@click.option('--tabixpath', default="tabix",help='tabix path')
+@click.option('--organism', type=click.Choice(["human", "mouse"]), help="human or mouse.")
+@click.option("--refpath", "refpath", required=True, type=click.Path(exists=True, resolve_path=True), help="Path to reference.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
-@click.option("--qvalue", default=0.05, show_default=True, help="macs3 parameter")
-@click.option("--nolambda", is_flag=True, default=False, show_default=True, help="macs3 parameter")
-@click.option("--snapshift", default=0, show_default=True, help="macs3 parameter")
-@click.option("--extsize", default=400, show_default=True, help="macs3 parameter")
-@click.option("--min_len", default=400, show_default=True, help="macs3 parameter")
-@click.option("--blacklist", default=None, show_default=True, help="macs3 parameter")
+@click.option("--qvalue", default=0.05, show_default=True, help="Minimum FDR (q-value) cutoff for peak detection.")
+@click.option("--nolambda", is_flag=True, default=False, show_default=True, help="If True, macs3 will use the background lambda as local lambda. This means macs3 will not consider the local bias at peak candidate regions.")
+@click.option("--snapshift", default=0, show_default=True, help="The shift size in MACS.")
+@click.option("--extsize", default=400, show_default=True, help="The extension size in MACS.")
+@click.option("--min_len", default=400, show_default=True, help="The minimum length of a called peak. If None, it is set to 'extsize'.")
 @click.pass_obj
 def astep3(obj, **kwargs):
     from .astep3 import makedict, calulate_chunck_size, get_int_type, runpipe
     runpipe(**kwargs)
 
 @arc.command(help="ATAC do signac.")
-@click.option("--gex_matrix", required=True, help="Sample name.")
-@click.option("--atac_matrix", required=True, help="Sample name.")
-@click.option("--rscriptpath", default="Rscript",help='Rscript path')
-@click.option("--fragpath", required=True, help="Sample name.")
+@click.option("--gex_matrix", required=True, help="Filtered Feature-barcode matrix.")
+@click.option("--atac_matrix", required=True, help="Filtered Peak-barcode matrix.")
+@click.option("--fragpath", required=True, help="Path to fragments file.")
+@click.option('--samplename', required=True,help='Sample name.')
+@click.option("--rawname", default="rawname", hidden=True, help="raw name.")
 @click.option("--outdir", default="./", show_default=True, type=click.Path(), help="Output dir.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
-@click.option("--species", type=click.Choice(["human", "mouse"]), help="human or mouse.")
-@click.option("--anno_rds", required=True, help="Anno_EnsDb_Hsapiens_v86.rds or Anno_EnsDb_Mmusculus_v79.rds.")
-@click.option("--memory", default=60, show_default=True, help="macs3 parameter")
+@click.option("--organism", type=click.Choice(["human", "mouse"]), help="human or mouse.")
+@click.option("--anno_rds", required=True, help="Path to Anno_EnsDb.rds.")
 @click.pass_obj
 def astep4(obj, **kwargs):
     from .astep4 import do_signac
     do_signac(**kwargs)
 
 @arc.command(help="report.")
-# @click.option('--datajson', required=True,help='')
-@click.option('--gexjson', required=True,help='')
-@click.option('--atacjson', required=True,help='')
+@click.option('--gexjson', required=True,help="Path to gex sample json file.")
+@click.option('--atacjson', required=True,help="Path to atac sample json file.")
 @click.option("--outdir", default="./", show_default=True, type=click.Path(), help="Output dir.")
-@click.option('--samplename', required=True,help='')
+@click.option('--samplename', required=True,help="Sample name.")
+@click.option("--rawname", default="rawname", hidden=True, help="raw name.")
 @click.pass_obj
 def report(obj, **kwargs):
     from .report_arc import report
@@ -195,18 +190,18 @@ def report(obj, **kwargs):
 
 @arc.command(help="run all steps.")
 @click.pass_obj
-@click.option("--efq1", "efq1", required=True, type=click.Path(exists=True, resolve_path=True), multiple=True,
-              help="expression Read1 fq file, can specify multiple times.")
-@click.option("--efq2", "efq2", required=True, type=click.Path(exists=True, resolve_path=True),
-              multiple=True, help="expression Read2 fq file, can specify multiple times.")
-@click.option("--afq1", "afq1", required=True, type=click.Path(exists=True, resolve_path=True), multiple=True,
-              help="atac Read1 fq file, can specify multiple times.")
-@click.option("--afq2", "afq2", required=True, type=click.Path(exists=True, resolve_path=True),
-              multiple=True, help="atac Read2 fq file, can specify multiple times.")
+@click.option("--rnafq1", "rnafq1", required=True, type=click.Path(exists=True, resolve_path=True), multiple=True,
+              help="Expression Read1 fq file, can specify multiple times.")
+@click.option("--rnafq2", "rnafq2", required=True, type=click.Path(exists=True, resolve_path=True),
+              multiple=True, help="Expression Read2 fq file, can specify multiple times.")
+@click.option("--atacfq1", "atacfq1", required=True, type=click.Path(exists=True, resolve_path=True), multiple=True,
+              help="ATAC Read1 fq file, can specify multiple times.")
+@click.option("--atacfq2", "atacfq2", required=True, type=click.Path(exists=True, resolve_path=True),
+              multiple=True, help="ATAC Read2 fq file, can specify multiple times.")
 @click.option("--samplename", required=True,
               help="Sample name.")
-# @click.option("--rawname", required=True, hidden=True,
-#               help="rawname.")
+@click.option("--rawname", default="rawname", hidden=True,
+              help="raw name.")
 @click.option("--outdir", default="./", show_default=True, type=click.Path(resolve_path=True),
               help="Output dir.")
 @click.option("--shift", is_flag=True, default=False, hidden=True,
@@ -229,16 +224,12 @@ def report(obj, **kwargs):
               help="Skip filtering short reads after adapter filter, short reads will be used.")
 @click.option("--core", default=4, show_default=True,
               help="Set max number of cpus that pipeline might request at the same time.")
-@click.option("--memory", default=60, show_default=True,
-              help="Set max number of cpus that pipeline might request at the same time.")
 @click.option("--include-introns", "region", is_flag=True, default=False, callback=include_introns_callback, show_default=True,
               help="include introns or not.")
-@click.option("--species", type=click.Choice(["human", "mouse"]), 
+@click.option("--organism", type=click.Choice(["human", "mouse"]), 
               help="human or mouse") # 提示非模式
 @click.option("--refpath", "refpath", required=True, type=click.Path(exists=True, resolve_path=True),
               help="Path to reference.")
-@click.option("--anno_rds", "anno_rds", required=True, type=click.Path(exists=True, resolve_path=True),
-              help="Path to anno_rds.")
 @click.option("--star_path", "star_path", default="STAR",
               help="Path to executable STAR aligner.")
 @click.option("--expectNum", "expectNum", default=3000, show_default=True,
@@ -247,17 +238,17 @@ def report(obj, **kwargs):
               help="Force pipeline to use this number of cells, skipping cell calling algorithm.")
 @click.option("--umi_correct_method", type=click.Choice(["cluster", "adjacency", "directional"]), default="adjacency", show_default=True, hidden=True,
               help="cluster, adjacency, directional")
-# @click.option("--bwa_path", "bwa_path", default="bwa", help="Path to executable bwa aligner.")
-# @click.option('--bedtoolspath', default="bedtools",help='bedtools path')
-# @click.option('--gunzippath', default="gunzip",help='gunzip path')
-# @click.option('--bgzippath', default="bgzip",help='bgzip path')
-# @click.option('--tabixpath', default="tabix",help='tabix path')
-@click.option("--qvalue", default=0.05, show_default=True, help="macs3 parameter")
-@click.option("--nolambda", is_flag=True, default=False, show_default=True, help="macs3 parameter")
-@click.option("--snapshift", default=0, show_default=True, help="macs3 parameter")
-@click.option("--extsize", default=400, show_default=True, help="macs3 parameter")
-@click.option("--min_len", default=400, show_default=True, help="macs3 parameter")
-@click.option("--blacklist", default=None, show_default=True, help="macs3 parameter")  # 删除
+@click.option("--qvalue", default=0.05, show_default=True, 
+              help="Minimum FDR (q-value) cutoff for peak detection.")
+@click.option("--nolambda", is_flag=True, default=False, show_default=True, 
+              help="If True, macs3 will use the background lambda as local lambda. This means macs3 will not consider the local bias at peak candidate regions.")
+@click.option("--snapshift", default=0, show_default=True, 
+              help="The shift size in MACS.")
+@click.option("--extsize", default=400, show_default=True, 
+              help="The extension size in MACS.")
+@click.option("--min_len", default=400, show_default=True, 
+              help="The minimum length of a called peak. If None, it is set to 'extsize'.")
+
 def run(obj, **kwargs):
     logger.info("Check the genomeDir path...")
     kwargs["genomeDir"] = os.path.join(kwargs["refpath"], "star")
@@ -268,23 +259,25 @@ def run(obj, **kwargs):
     logger.info("Check the genomefa path...")
     kwargs["genomefa"] = os.path.join(kwargs["refpath"], "fasta", "genome.fa")
     logger.info(check_path(kwargs["genomefa"]))
+    logger.info("Check the anno_rds path...")
+    kwargs["anno_rds"] = os.path.join(kwargs["refpath"], "anno", "Anno_EnsDb.rds")
+    logger.info(check_path(kwargs["anno_rds"]))
     sampleoutdir = kwargs["outdir"]
 
     # GEX
-    kwargs["gexname"] = f'{kwargs["samplename"]}-E'
+    kwargs["gexname"] = f'{kwargs["samplename"]}_E'
     kwargs["outdir"] = os.path.join(sampleoutdir, 'analysis', kwargs["gexname"])
     os.makedirs(kwargs["outdir"], exist_ok=True)
-    # kwargs["fq1"] = kwargs["efq1"]
 
     if "estep1" in obj["steps"]:
         kwargs["chemistry"] = "DD-Q"
         from ..utils.barcode import check_rna_options
-        chemistry_kwargs = check_rna_options(fq1=kwargs["efq1"], fq2=kwargs["efq2"], **kwargs)
+        chemistry_kwargs = check_rna_options(fq1=kwargs["rnafq1"], fq2=kwargs["rnafq2"], **kwargs)
         kwargs.update(chemistry_kwargs)
         with open(f"{kwargs['outdir']}/.params.json", "w") as fh:
             json.dump(kwargs, fh, indent=4)
         from ..utils.barcode import barcode_main
-        barcode_main(fq1=kwargs["efq1"], fq2=kwargs["efq2"], **kwargs)
+        barcode_main(fq1=kwargs["rnafq1"], fq2=kwargs["rnafq2"], **kwargs)
 
     fq = os.path.join(kwargs["outdir"], "step1", f"{kwargs['gexname']}_2.fq.gz")
     # paired: [r1.fq.gz, r2.fq.gz]
@@ -311,19 +304,19 @@ def run(obj, **kwargs):
     kwargs["gexjson"] = os.path.join(kwargs["outdir"], f"{kwargs['gexname']}_summary.json")
 
     # ATAC
-    kwargs["atacname"] = f'{kwargs["samplename"]}-A'
+    kwargs["atacname"] = f'{kwargs["samplename"]}_A'
     kwargs["outdir"] = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"])
     os.makedirs(kwargs["outdir"], exist_ok=True)
 
     if "astep1" in obj["steps"]:
-        kwargs["chemistry"] = "DD-AG"
+        kwargs["chemistry"] = "DD_AG"
         from ..utils.atacbarcode import check_atac_options
-        chemistry_kwargs = check_atac_options(fq1=kwargs["afq1"], fq2=kwargs["afq2"], **kwargs)
+        chemistry_kwargs = check_atac_options(fq1=kwargs["atacfq1"], fq2=kwargs["atacfq2"], **kwargs)
         kwargs.update(chemistry_kwargs)
         with open(f"{kwargs['outdir']}/.params.json", "w") as fh:
             json.dump(kwargs, fh, indent=4)
         from ..utils.atacbarcode import barcode_main
-        barcode_main(fq1=kwargs["afq1"], fq2=kwargs["afq2"],**kwargs)
+        barcode_main(fq1=kwargs["atacfq1"], fq2=kwargs["atacfq2"],**kwargs)
         kwargs["atacjson"] = os.path.join(kwargs["outdir"], f"{kwargs['atacname']}_summary.json")
         kwargs["step1afq1"] = os.path.join(kwargs["outdir"], "step1", f"{kwargs['atacname']}_1.fq.gz")
         kwargs["step1afq2"] = os.path.join(kwargs["outdir"], "step1", f"{kwargs['atacname']}_2.fq.gz")
@@ -349,6 +342,7 @@ def run(obj, **kwargs):
     kwargs["gex_matrix"] = matrix
     atacmatrix = os.path.join(kwargs["outdir"], "step3", "filter_peaks_bc_matrix")
     kwargs["atac_matrix"] = atacmatrix
+    atac_rawmatrix = os.path.join(kwargs["outdir"], "step3", "raw_peaks_bc_matrix")
     kwargs["fragpath"] = os.path.join(kwargs["outdir"], "step3", f"{kwargs['atacname']}_fragments.tsv.gz")
 
     if "astep4" in obj["steps"]:
@@ -360,10 +354,184 @@ def run(obj, **kwargs):
     report(**kwargs)
 
     # summary file
+    featureCountsDir = os.path.join(sampleoutdir, 'analysis', kwargs["gexname"], "step2", "featureCounts")
+    bwaDir = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step2", "bwa_pe")
+    astep3Dir = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3")
     peakfile = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs["atacname"], "_peaks.bed")
-    metrics_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", "per_barcode_metrics.csv")
-    cmd = ('cp -r {gex_matrix} {outsdir} ; '
-           'cp -r {atac_matrix} {outsdir}'
-        ).format(gex_matrix=kwargs["gex_matrix"], outsdir=kwargs["outdir"], atac_matrix=kwargs["atac_matrix"])
-    run(cmd, shell=True)
+    rds_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step4", "signac_obj.rds")
+    cmd1 = f"cd {featureCountsDir}; mv {kwargs['gexname']}_SortedByName.bam ../../../../outs/; ln -s ../../../../outs/{kwargs['gexname']}_SortedByName.bam {kwargs['gexname']}_SortedByName.bam"
+    cmd_execute(cmd1, check=True)
+    cmd2 = f"cd {bwaDir}; mv {kwargs['atacname']}_mem_pe_Sort.bam ../../../../outs/; ln -s ../../../../outs/{kwargs['atacname']}_mem_pe_Sort.bam {kwargs['atacname']}_mem_pe_Sort.bam"
+    cmd_execute(cmd2, check=True)
+    cmd3 = f"cd {astep3Dir}; mv {kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz.tbi ../../../outs/; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz.tbi {kwargs['atacname']}_fragments.tsv.gz.tbi"
+    cmd_execute(cmd3, check=True)
+    cmd4 = f"cp -r {kwargs['gex_matrix']} {kwargs['outdir']}; cp -r {kwargs['raw_matrix']} {kwargs['outdir']}"
+    cmd_execute(cmd4, check=True)
+    cmd5 = f"cp -r {kwargs['atac_matrix']} {kwargs['outdir']} ; cp -r {atac_rawmatrix} {kwargs['outdir']}"
+    cmd_execute(cmd5, check=True)
+    cmd6 = f"cp {peakfile} {kwargs['outdir']} ; mv {rds_file} {kwargs['outdir']}"
+    cmd_execute(cmd6, check=True)
+
+    # cmd = ("cd {featureCountsDir}; mv {gexname}_SortedByName.bam ../../../../outs/; ln -s ../../../../outs/{gexname}_SortedByName.bam {gexname}_SortedByName.bam; "
+    #        "cd {bwaDir}; mv {atacname}_mem_pe_Sort.bam ../../../../outs/; ln -s ../../../../outs/{atacname}_mem_pe_Sort.bam {atacname}_mem_pe_Sort.bam; "
+    #        "cd {astep3Dir}; mv {atacname}_fragments.tsv.gz ../../../outs/; ln -s ../../../outs/{atacname}_fragments.tsv.gz {atacname}_fragments.tsv.gz; "
+    #        "mv {atacname}_fragments.tsv.gz.tbi ../../../outs/; ln -s ../../../outs/{atacname}_fragments.tsv.gz.tbi {atacname}_fragments.tsv.gz.tbi; "
+    #        "cp -r {gex_matrix} {outsdir} ; "
+    #        "cp -r {raw_matrix} {outsdir} ; "
+    #        "cp -r {atac_matrix} {outsdir} ; "
+    #        "cp -r {atac_rawmatrix} {outsdir} ; "
+    #        "cp {peakfile} {outsdir} ; "
+    #        "mv {rds_file} {outsdir}"
+    #     ).format(
+    #         featureCountsDir=featureCountsDir,
+    #         bwaDir=bwaDir,
+    #         astep3Dir=astep3Dir,
+    #         gexname=kwargs['gexname'],
+    #         atacname=kwargs['atacname'],
+    #         gex_matrix=kwargs["gex_matrix"], 
+    #         raw_matrix=kwargs["raw_matrix"],
+    #         atac_matrix=kwargs["atac_matrix"],
+    #         atac_rawmatrix=atac_rawmatrix,
+    #         peakfile=peakfile,
+    #         rds_file=rds_file,
+    #         outsdir=kwargs["outdir"])
+    # run(cmd, shell=True)
+
+@arc.command(help="retry some steps.")
+@click.pass_obj
+@click.option("--samplename", required=True,
+              help="Sample name.")
+@click.option("--rawname", default="rawname", hidden=True,
+              help="raw name.")
+@click.option("--outdir", default="./", show_default=True, type=click.Path(resolve_path=True),
+              help="Output dir.")
+@click.option("--core", default=4, show_default=True,
+              help="Set max number of cpus that pipeline might request at the same time.")
+@click.option("--organism", type=click.Choice(["human", "mouse"]), 
+              help="human or mouse") # 提示非模式
+@click.option("--refpath", "refpath", required=True, type=click.Path(exists=True, resolve_path=True),
+              help="Path to reference.")
+@click.option("--forceCell", "forceCell", required=False,
+              help="Force pipeline to use this number of cells, skipping cell calling algorithm.")
+@click.option("--qvalue", default=0.05, show_default=True, 
+              help="Minimum FDR (q-value) cutoff for peak detection.")
+@click.option("--nolambda", is_flag=True, default=False, show_default=True, 
+              help="If True, macs3 will use the background lambda as local lambda. This means macs3 will not consider the local bias at peak candidate regions.")
+@click.option("--snapshift", default=0, show_default=True, 
+              help="The shift size in MACS.")
+@click.option("--extsize", default=400, show_default=True, 
+              help="The extension size in MACS.")
+@click.option("--min_len", default=400, show_default=True, 
+              help="The minimum length of a called peak. If None, it is set to 'extsize'.")
+
+def retry(obj, **kwargs):
+    logger.info("Check the genomeDir path...")
+    kwargs["genomeDir"] = os.path.join(kwargs["refpath"], "star")
+    logger.info(check_path(kwargs["genomeDir"]))
+    logger.info("Check the gtf path...")
+    kwargs["gtf"] = os.path.join(kwargs["refpath"], "genes", "genes.gtf")
+    logger.info(check_path(kwargs["gtf"]))
+    logger.info("Check the genomefa path...")
+    kwargs["genomefa"] = os.path.join(kwargs["refpath"], "fasta", "genome.fa")
+    logger.info(check_path(kwargs["genomefa"]))
+    logger.info("Check the anno_rds path...")
+    kwargs["anno_rds"] = os.path.join(kwargs["refpath"], "anno", "Anno_EnsDb.rds")
+    logger.info(check_path(kwargs["anno_rds"]))
+    sampleoutdir = kwargs["outdir"]
+    kwargs["gexname"] = f'{kwargs["samplename"]}_E'
+    kwargs["atacname"] = f'{kwargs["samplename"]}_A'
+    fragpath=os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs['atacname']) + "_fragments.tsv.gz"
+    fragindex=os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs['atacname']) + "_fragments.tsv.gz.tbi"
+    if os.path.exists(fragpath):
+        cmd7 = f"rm {fragpath}"
+        cmd_execute(cmd7, check=True)
+    if os.path.exists(fragindex):
+        cmd8 = f"rm {fragindex}"
+        cmd_execute(cmd8, check=True)
+    
+
+    if kwargs["forceCell"] != None:
+        print(f'retry forceCell : {kwargs["forceCell"]}')
+
+        # GEX
+        kwargs["outdir"] = os.path.join(sampleoutdir, 'analysis', kwargs["gexname"])
+        raw_matrix = check_path(os.path.join(kwargs["outdir"], "step3", "raw_feature_bc_matrix"))
+        kwargs["raw_matrix"] = raw_matrix
+        from .estep3 import cell_calling
+        cell_calling(**kwargs)
+        
+        kwargs["gex_matrix"] = os.path.join(kwargs["outdir"], "step3", "filtered_feature_bc_matrix")
+        kwargs["gexjson"] = os.path.join(kwargs["outdir"], f"{kwargs['gexname']}_summary.json")
+
+        # ATAC
+        # astep3
+        kwargs["outdir"] = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"])
+        atacbam = check_path(os.path.join(kwargs["outdir"], "step2", "bwa_pe",  f"{kwargs['atacname']}_mem_pe_Sort.bam"))
+        kwargs["filtercb"] = check_path(os.path.join(sampleoutdir, 'analysis', kwargs["gexname"], "step3", "filtered_feature_bc_matrix", "barcodes.tsv.gz"))
+        kwargs["countxls"] = check_path(os.path.join(sampleoutdir, 'analysis', kwargs["gexname"], "step3", "counts.xls"))
+        from .astep3 import runpipe
+        runpipe(bam=atacbam, **kwargs)
+
+        kwargs["atac_matrix"] = os.path.join(kwargs["outdir"], "step3", "filter_peaks_bc_matrix")
+        atac_rawmatrix = os.path.join(kwargs["outdir"], "step3", "raw_peaks_bc_matrix")
+        kwargs["fragpath"] = os.path.join(kwargs["outdir"], "step3", f"{kwargs['atacname']}_fragments.tsv.gz")
+        kwargs["atacjson"] = os.path.join(kwargs["outdir"], f"{kwargs['atacname']}_summary.json")
+
+        # astep4
+        from .astep4 import do_signac
+        do_signac(**kwargs)
+
+        kwargs["outdir"] = os.path.join(sampleoutdir, 'outs')
+        from .report_arc import report
+        report(**kwargs)
+
+        # summary file
+        astep3Dir = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3")
+        peakfile = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs["atacname"], "_peaks.bed")
+        rds_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step4", "signac_obj.rds")
+        
+        cmd3 = f"cd {astep3Dir}; mv {kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz.tbi ../../../outs/; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz.tbi {kwargs['atacname']}_fragments.tsv.gz.tbi"
+        cmd_execute(cmd3, check=True)
+        cmd4 = f"cp -r {kwargs['gex_matrix']} {kwargs['outdir']}; cp -r {kwargs['raw_matrix']} {kwargs['outdir']}"
+        cmd_execute(cmd4, check=True)
+        cmd5 = f"cp -r {kwargs['atac_matrix']} {kwargs['outdir']} ; cp -r {atac_rawmatrix} {kwargs['outdir']}"
+        cmd_execute(cmd5, check=True)
+        cmd6 = f"cp {peakfile} {kwargs['outdir']} ; mv {rds_file} {kwargs['outdir']}"
+        cmd_execute(cmd6, check=True)
+
+    else:
+        print(f'retry callpeak : Parameter : qvalue={kwargs["qvalue"]}, nolambda={kwargs["nolambda"]}, shift={kwargs["snapshift"]}, extsize={kwargs["extsize"]}, min_len={kwargs["min_len"]}, n_jobs={kwargs["core"]}')
+        # astep3
+        kwargs["outdir"] = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"])
+        atacbam = check_path(os.path.join(kwargs["outdir"], "step2", "bwa_pe",  f"{kwargs['atacname']}_mem_pe_Sort.bam"))
+        kwargs["filtercb"] = check_path(os.path.join(sampleoutdir, 'analysis', kwargs["gexname"], "step3", "filtered_feature_bc_matrix", "barcodes.tsv.gz"))
+        kwargs["countxls"] = check_path(os.path.join(sampleoutdir, 'analysis', kwargs["gexname"], "step3", "counts.xls"))
+        from .astep3 import runpipe
+        runpipe(bam=atacbam, **kwargs)
+        kwargs["gex_matrix"] = os.path.join(sampleoutdir, 'analysis', kwargs["gexname"], "step3", "filtered_feature_bc_matrix")
+        kwargs["atac_matrix"] = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", "filter_peaks_bc_matrix")
+        atac_rawmatrix = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", "raw_peaks_bc_matrix")
+        kwargs["fragpath"] = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", f"{kwargs['atacname']}_fragments.tsv.gz")
+
+        # astep4
+        from .astep4 import do_signac
+        do_signac(**kwargs)
+
+        kwargs["outdir"] = os.path.join(sampleoutdir, 'outs')
+        kwargs["gexjson"] = os.path.join(sampleoutdir, 'analysis', kwargs["gexname"], f"{kwargs['gexname']}_summary.json")
+        kwargs["atacjson"] = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], f"{kwargs['atacname']}_summary.json")
+        from .report_arc import report
+        report(**kwargs)
+
+        # summary file
+        astep3Dir = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3")
+        peakfile = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs["atacname"], "_peaks.bed")
+        rds_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step4", "signac_obj.rds")
+
+        cmd3 = f"cd {astep3Dir}; mv {kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz.tbi ../../../outs/; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz.tbi {kwargs['atacname']}_fragments.tsv.gz.tbi"
+        cmd_execute(cmd3, check=True)
+        cmd5 = f"cp -r {kwargs['atac_matrix']} {kwargs['outdir']} ; cp -r {atac_rawmatrix} {kwargs['outdir']}"
+        cmd_execute(cmd5, check=True)
+        cmd6 = f"cp {peakfile} {kwargs['outdir']} ; mv {rds_file} {kwargs['outdir']}"
+        cmd_execute(cmd6, check=True)
 

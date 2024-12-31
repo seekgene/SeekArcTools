@@ -6,7 +6,8 @@ from ..utils.wrappers import bwamem_wrapper
 
 
 def align(
-    afq:list, genomefa:str, atacname:str, outdir:str, core:int=4, bwa_path:str="bwa", **kwargs):
+    afq:list, genomefa:str, samplename:str, outdir:str, core:int=4, bwa_path:str="bwa", **kwargs):
+    atacname = f"{samplename}_A"
     basedir = os.path.join(outdir, "step2")
     bwa_dir = os.path.join(basedir, "bwa_pe")
     os.makedirs(bwa_dir, exist_ok=True)

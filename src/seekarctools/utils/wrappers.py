@@ -4,6 +4,7 @@ import shutil
 from subprocess import run
 import subprocess
 import random
+import psutil
 from .helper import logger
 
 def cmd_execute(
@@ -127,10 +128,10 @@ def qualimap_wrapper(bam:str, gtf:str, outdir:str, qualimap_path:str="qualimap",
         unzip_wrapper(gtf, gtf_file)
     else:
         gtf_file = gtf
-
+    available_memory = psutil.virtual_memory().available / (1024 * 1024 * 1024)
     args = [
         qualimap_path, 'rnaseq', '-outformat', 'PDF', '-outdir', outdir, '-bam',
-        bam, '-gtf', gtf, '-p', strand[s], '--java-mem-size=8G'
+        bam, '-gtf', gtf, '-p', strand[s], f'--java-mem-size={int(available_memory)}G'
     ]
 
     for k, v in kwargs.items():

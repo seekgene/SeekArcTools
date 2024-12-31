@@ -132,7 +132,7 @@ def chemistry_auto(fq1, fq2, outdir, scoremin=None, matchnmin=None, genomeDir=No
     for chem in test_chems:
         logger.info(f"test {chem}!")
         barcode_main([fq1_1M,], [fq2_1M,], chem, f"{_outdir}/{chem}", core=1, use_short_read=use_short_read, **CHEMISTRY[chem])
-        rate = barcode_report(f"{_outdir}/{chem}/{chem}_summary.json")
+        rate = barcode_report(f"{_outdir}/{chem}/{chem}_E_summary.json")
         rate_dict[chem] = rate
     for k, v in rate_dict.items():
         logger.info(f"valid barcode rate of {k}: {v*100:.3f}%")
@@ -144,7 +144,7 @@ def chemistry_auto(fq1, fq2, outdir, scoremin=None, matchnmin=None, genomeDir=No
     else:
         chemistry = kwargs["chemistry"]
     
-    _fq2_1M = f"{_outdir}/{chemistry}/step1/{chemistry}_2.fq.gz"
+    _fq2_1M = f"{_outdir}/{chemistry}/step1/{chemistry}_E_2.fq.gz"
 
     #call STAR Wrapper
     if genomeDir and star_path and gtf:
@@ -397,7 +397,7 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
             "r2_q": R2_Q_Counter
         }
 
-def barcode_main(fq1:list, fq2:list, gexname: str, outdir:str,
+def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
                  barcode:list=[], match_type:list=[], shift:str=True, shift_pattern:str="A",
                  structure:str="B8L8B8L10B8U12T15", linker: list=[],
                  core:int=4, do_B_correction=True, do_L_correction=True,
@@ -448,6 +448,7 @@ def barcode_main(fq1:list, fq2:list, gexname: str, outdir:str,
     
     stat = QcStat()
     
+    gexname = f"{samplename}_E"
     os.makedirs(f"{outdir}/step1", exist_ok=True)
     fqout = os.path.join(outdir, f"step1/{gexname}")
     fqout_multi = os.path.join(outdir, f"step1/{gexname}_multi")

@@ -9,6 +9,8 @@ ADAPTERS = {
 
 R1_MINLEN = 20
 R2_MINLEN = 60
+ATAC_R1_MINLEN = 10
+ATAC_R2_MINLEN = 10
 
 CHEMISTRY = {
     '__SO01V3':{
@@ -92,7 +94,7 @@ CHEMISTRY = {
         'sc5p': None,
         'match_type': (1,),
     },
-    "DD-AG":{
+    "DD_AG":{
         'shift': False,
         'structure': 'B17U12',
         'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),

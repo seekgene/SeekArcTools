@@ -42,12 +42,12 @@ def mapping_summary(STARLog, RnaSeqMetrics):
 
 
 def align(
-    fq:list, genomeDir:str, gtf:str, gexname:str, outdir:str, region:str,
+    fq:list, genomeDir:str, gtf:str, samplename:str, outdir:str, region:str,
     core:int=4, star_path:str="STAR", **kwargs):
 
     if ("steps" not in kwargs) or (not kwargs["steps"]):
         kwargs["steps"] = ["STAR", "SortByPos", "qualimap",  "FeatureCounts", "SortByName"]
-
+    gexname = f"{samplename}_E"
     basedir = os.path.join(outdir, "step2")
     STAR_dir = os.path.join(basedir, "STAR")
     os.makedirs(STAR_dir, exist_ok=True)

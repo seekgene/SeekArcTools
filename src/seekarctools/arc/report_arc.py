@@ -3,6 +3,7 @@ import os
 from jinja2 import Environment, FileSystemLoader
 import numpy as np
 import pandas as pd
+from ..utils.helper import logger
 
 def pre_diff_data(diff_table, n=50):
     df = pd.read_table(diff_table)
@@ -24,8 +25,8 @@ def get_atac_tsne(tsnefile):
     df = pd.read_table(tsnefile, index_col=0)
     # df = df.drop(['frac_dup', 'frac_mito', 'tsse', 'n_frag_overlap_peak', 'percent.mito', ], axis=1)
     tsne_d = df.to_dict(orient='list')
-    tsne1 = tsne_d['tsneATAC_1']
-    tsne2 = tsne_d['tsneATAC_2']
+    tsne1 = tsne_d['atactsne_1']
+    tsne2 = tsne_d['atactsne_2']
     depth = tsne_d['nCount_ATAC']
     cluster = tsne_d['seurat_clusters']
     return tsne1, tsne2, depth, cluster
@@ -38,7 +39,7 @@ def count_link(linkfile):
     return total_rows, unique_genes, unique_peaks
 
 
-def report(gexjson, atacjson, outdir, samplename, **kwargs):
+def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     os.makedirs(outdir, exist_ok=True)
     datajson = os.path.join(os.path.dirname(__file__), '../utils/reportarc/sgarc.json')
     assert os.path.exists(datajson), f'{datajson} not found!'
@@ -52,8 +53,15 @@ def report(gexjson, atacjson, outdir, samplename, **kwargs):
 
     atacdir = os.path.dirname(atacjson)
     linkfile = os.path.join(atacdir, 'step4', 'linked_feature.xls')
-    assert os.path.exists(linkfile), f'{linkfile} not found!'
-    feature_link, link_gene, link_peak = count_link(linkfile)
+    if not os.path.exists(linkfile):
+        logger.info(f"Error : The path of '{linkfile}' is not exists")
+        feature_link = 0
+        link_gene = 0
+        link_peak = 0
+    else:
+        feature_link, link_gene, link_peak = count_link(linkfile)
+    if rawname == "rawname":
+        rawname = samplename
 
     # joint: title
     data_summary["Joint"][0]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
@@ -61,9 +69,9 @@ def report(gexjson, atacjson, outdir, samplename, **kwargs):
     data_summary["Joint"][0]["right"][0]["data"]["ATAC Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
     # joint: left_Sample riget_Joint Metrics
     data_summary["Joint"][1]["left"][0]["data"]["Sample ID"] = samplename
-    data_summary["Joint"][1]["left"][0]["data"]["Sample description"] = samplename
+    data_summary["Joint"][1]["left"][0]["data"]["Sample description"] = rawname
     data_summary["Joint"][1]["left"][0]["data"]["Pipeline version"] = "seekarctools " + gex_summary["__version__"]
-    data_summary["Joint"][1]["left"][0]["data"]["Reference path"] = atac_summary["atac"]["refpath"].split("/")[-1]
+    data_summary["Joint"][1]["left"][0]["data"]["Reference path"] = atac_summary["atac"]["refpath"].split('/')[-1]
     data_summary["Joint"][1]["left"][0]["data"]["Chemistry"] = atac_summary["stat"]["chemistry"]
     data_summary["Joint"][1]["left"][0]["data"]["Organism"] = atac_summary["atac"]["Organism"]
     data_summary["Joint"][1]["left"][0]["data"]["Include introns"] = gex_summary["include_introns"]
@@ -200,33 +208,35 @@ def report(gexjson, atacjson, outdir, samplename, **kwargs):
             'ATAC_Fraction_of_high-quality_fragments_overlapping_TSS,'
             'ATAC_Fraction_of_high-quality_fragments_overlapping_peaks,'
             'ATAC_Fraction_of_transposition_events_in_peaks_in_cells,'
-            'ATAC_Mean_raw_read_pairs_per _cell,'
+            'ATAC_Mean_raw_read_pairs_per_cell,'
             'ATAC_Median_high-quality_fragments_per_cell,'
             'ATAC_Non-nuclear_read_pairs,'
             'ATAC_Number_of_peaks,'
             'ATAC_Percent_duplicates,'
             'ATAC_Q30_bases_in_barcode,'
-            'ATAC_Q30_bases_in_read1,'
-            'ATAC_Q30_bases_in_read2,'
+            'ATAC_Q30_bases_in_read_1,'
+            'ATAC_Q30_bases_in_read_2,'
             'ATAC_Sequenced_read_pairs,'
             'ATAC_TSS_enrichment_score,'
             'ATAC_Unmapped_read_pairs,'
+            'ATAC_Too_Short,'
             'ATAC_Valid_barcodes,'
-            'GEX Fraction of reads in cells,'
-            'GEX Mean raw reads per cell,'
-            'GEX Median UMI counts per cell,'
-            'GEX Median genes per cell,'
-            'GEX Sequencing Saturation,'
-            'GEX Q30 bases in UMI,'
-            'GEX Q30 bases in barcode,'
-            'GEX Reads mapped confidently to exonic regions,'
-            'GEX Reads mapped confidently to genome,'
-            'GEX Reads mapped confidently to intergenic regions,'
-            'GEX Reads mapped confidently to intronic regions,'
-            'GEX Reads mapped to genome,'
-            'GEX Sequenced read pairs,'
-            'GEX Total genes detected,'
-            'GEX Valid barcodes'
+            'GEX_Fraction_of_reads_in_cells,'
+            'GEX_Mean_raw_reads_per_cell,'
+            'GEX_Median_UMI_counts_per_cell,'
+            'GEX_Median_genes_per_cell,'
+            'GEX_Sequencing_Saturation,'
+            'GEX_Q30_bases_in_UMI,'
+            'GEX_Q30_bases_in_barcode,'
+            'GEX_Reads_mapped_confidently_to_exonic_regions,'
+            'GEX_Reads_mapped_confidently_to_genome,'
+            'GEX_Reads_mapped_confidently_to_intergenic_regions,'
+            'GEX_Reads_mapped_confidently_to_intronic_regions,'
+            'GEX_Reads_mapped_to_genome,'
+            'GEX_Sequenced_read_pairs,'
+            'GEX_Too_Short,'
+            'GEX_Total_Genes_Detected,'
+            'GEX_Valid_barcodes'
             )
     summary_data = [
             samplename,
@@ -253,6 +263,7 @@ def report(gexjson, atacjson, outdir, samplename, **kwargs):
             atac_summary["atac"]["Sequencing"]["Sequenced read pairs"],
             float(f'{atac_summary["atac"]["Targeting"]["TSS enrichment score"]:.4f}'),
             float(f'{atac_summary["atac"]["Mapping"]["Unmapped read pairs"]:.4f}'),
+            atac_summary["atac"]["Sequencing"]["Too short"],
             float(f'{atac_summary["atac"]["Sequencing"]["Valid barcodes"]:.4f}'),
             float(f'{gex_summary["cells"]["Fraction Reads in Cells"]:.4f}'),
             float(f'{gex_summary["cells"]["Mean Reads per Cell"]:.4f}'),
@@ -267,6 +278,7 @@ def report(gexjson, atacjson, outdir, samplename, **kwargs):
             float(f'{gex_summary["mapping"]["Reads Mapped to Intronic Regions"]:.4f}'),
             float(f'{gex_summary["mapping"]["Reads Mapped to Genome"]:.4f}'),
             gex_summary["stat"]["total"],
+            gex_summary["stat"]["too_short"],
             gex_summary["cells"]["Total Genes Detected"],
             float(f'{gex_summary["stat"]["valid"]/gex_summary["stat"]["total"]:.4f}')
         ]

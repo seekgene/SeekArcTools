@@ -14,8 +14,8 @@ def count(bam, outdir, gtf, umi_correct_method, **kwargs):
     countUtil.count(bam, basedir, gtf, umi_correct_method, **kwargs)
 
 
-def cell_calling(raw_matrix, outdir, gexname, gtf, expectNum=3000, **kwargs):
-
+def cell_calling(raw_matrix, outdir, samplename, gtf, expectNum=3000, **kwargs):
+    gexname = f"{samplename}_E"
     basedir = os.path.join(outdir, "step3")
     os.makedirs(basedir, exist_ok=True)
 

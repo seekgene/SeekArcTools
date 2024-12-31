@@ -5,6 +5,7 @@ import pandas as pd
 from collections import defaultdict
 import matplotlib.pyplot as plt
 from subprocess import run
+import psutil
 import os
 import json
 import gzip
@@ -34,15 +35,16 @@ def calulate_chunck_size(detail_file):
     return chunck_size
 
 
-def runpipe(bam:str, atacjson:str, outdir:str, atacname:str, filtercb:str, countxls:str, species:str, refpath:str, 
-            bedtoolspath:str="bedtools", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", 
-            core:int=4, qvalue:float=0.05, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, blacklist=None, **kwargs):
+def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, organism:str, refpath:str, 
+            bedtoolspath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", 
+            core:int=4, qvalue:float=0.05, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, **kwargs):
+    atacname = f"{samplename}_A"
     step3dir = os.path.join(outdir, "step3")
     os.makedirs(step3dir, exist_ok=True)
 
-    chrNameLength = os.path.join(refpath, 'star/chrNameLength.txt')
+    chrNameLength = os.path.join(refpath, "star", 'chrNameLength.txt')
     assert os.path.exists(chrNameLength), f'{chrNameLength} not found!'
-    gtf = os.path.join(refpath, 'genes/genes.gtf')
+    gtf = os.path.join(refpath, "genes", "genes.gtf")
     assert os.path.exists(gtf), f'{gtf} not found!'
 
     qc = {
@@ -57,7 +59,7 @@ def runpipe(bam:str, atacjson:str, outdir:str, atacname:str, filtercb:str, count
         "joint_cell": {}
     }
     qc["refpath"] = refpath
-    qc["Organism"] = species
+    qc["Organism"] = organism
 
     # make fragments and QC
     logger.info("make fragments and QC started!")
@@ -71,7 +73,7 @@ def runpipe(bam:str, atacjson:str, outdir:str, atacname:str, filtercb:str, count
 
     logger.info("make fragments and QC end!")
 
-
+    atacjson = os.path.join(outdir, atacname+"_summary.json")
     with open(atacjson, "r") as fh:
         atac_summary = json.load(fh)
 
@@ -136,12 +138,11 @@ def runpipe(bam:str, atacjson:str, outdir:str, atacname:str, filtercb:str, count
     # call peak
     logger.info("call peak started!")
     genomelen=atac.uns['reference_sequences']['reference_seq_length'].sum()
-    logger.info(f'Parameter : qvalue={qvalue}, nolambda={nolambda}, shift={snapshift}, extsize={extsize}, min_len={min_len}, blacklist={blacklist}, n_jobs={core}')
+    logger.info(f'Parameter : qvalue={qvalue}, nolambda={nolambda}, shift={snapshift}, extsize={extsize}, min_len={min_len}, n_jobs={core}')
 
-    snap.tl.macs3(atac, qvalue=qvalue, nolambda=nolambda, shift=snapshift, extsize=extsize, min_len=min_len, blacklist=blacklist, n_jobs=core)
+    snap.tl.macs3(atac, qvalue=qvalue, nolambda=nolambda, shift=snapshift, extsize=extsize, min_len=min_len, blacklist=None, n_jobs=core)
     logger.info(f'Call Peak Done !!!')
     peakfile=os.path.join(step3dir, atacname+"_rawpeaks.bed")
-    peaksortu=os.path.join(step3dir, atacname+"_peaksort-u.bed")
     peakuniq=os.path.join(step3dir, atacname+"_peaks.bed")
     with open(peakfile, 'w') as fhout:
         for index, row in atac.uns['macs3_pseudobulk'].iterrows():
@@ -150,9 +151,8 @@ def runpipe(bam:str, atacjson:str, outdir:str, atacname:str, filtercb:str, count
             end = row['end']
             fhout.write(f'{chrom}\t{start}\t{end}\n')
     # quchong
-    cmd = ("less {peakfile} |sort -u > {peaksortu}; "
-           "{bedtoolspath} sort -i {peaksortu} > {peakuniq} && rm {peaksortu} {peakfile}"
-        ).format(bedtoolspath=bedtoolspath, peakfile=peakfile, peaksortu=peaksortu, peakuniq=peakuniq)
+    cmd = ("{bedtoolspath} --max-mem 1G --unique {peakfile} > {peakuniq} && rm {peakfile}"
+        ).format(bedtoolspath=bedtoolspath, peakfile=peakfile, peakuniq=peakuniq)
     run(cmd, shell=True)
     # count peaks
     peakuniqlen = 0
@@ -281,6 +281,7 @@ def runpipe(bam:str, atacjson:str, outdir:str, atacname:str, filtercb:str, count
     with gzip.open(filtercb, 'rt') as fh:
         for row in fh:
             joint_cb_list.append(row.strip())
+    joint_cb_list=list(set(atac.obs_names).intersection(set(joint_cb_list)))
     merged_df['is_cell'] = merged_df['barcode'].isin(joint_cb_list).astype(int)
     merged_df.to_csv(os.path.join(step3dir, "per_barcode_metrics.csv"), index=False)
     cell_merged_df = merged_df[merged_df['is_cell'] == 1]
@@ -467,12 +468,14 @@ def runpipe(bam:str, atacjson:str, outdir:str, atacname:str, filtercb:str, count
 
     # sort & index
     logger.info("sort fragments & creat index started!")
+    available_memory = psutil.virtual_memory().available / (1024 * 1024 * 1024)
+    memory = int(available_memory * 0.9)
     cmd = ("cd {step3dir}; "
            "{gunzippath} {atacname}_fragments.tsv.gz; "
-           "{bedtoolspath} sort -i {atacname}_fragments.tsv > {atacname}_fragments_sort.tsv; "
+           "{bedtoolspath} --max-mem {memory}G {atacname}_fragments.tsv > {atacname}_fragments_sort.tsv; "
            "{bgzippath} -c {atacname}_fragments_sort.tsv > {atacname}_fragments.tsv.gz; "
            "{tabixpath} -p bed {atacname}_fragments.tsv.gz && rm {atacname}_fragments.tsv {atacname}_fragments_sort.tsv"
-        ).format(step3dir=step3dir, atacname=atacname, gunzippath=gunzippath, bedtoolspath=bedtoolspath, bgzippath=bgzippath, tabixpath=tabixpath)
+        ).format(step3dir=step3dir, atacname=atacname, memory=memory, gunzippath=gunzippath, bedtoolspath=bedtoolspath, bgzippath=bgzippath, tabixpath=tabixpath)
     run(cmd, shell=True)
 
     logger.info("sort fragments & creat index end!")

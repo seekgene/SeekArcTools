@@ -7,89 +7,8 @@ from functools import partial
 from .pipeline import Pipeline
 from collections import defaultdict, Counter
 from .helper import AdapterFilter, QcStat, parse_structure, read_file, get_new_bc, logger
-from .chemistry import R1_MINLEN, R2_MINLEN, CHEMISTRY
-from .wrappers import cmd_execute, STAR_wrapper, qualimap_wrapper, samtools_sort_wrapper
-
-def mapping_report(logfile):
-    msg = "\n"
-    flag = False
-    if not os.path.exists(logfile):
-        with open(logfile.replace("_Log.final.out", "_1M_Log.out")) as fh:
-            err_message = fh.read()
-            logger.error(err_message)
-            sys.exit(2)
-
-    with open(logfile) as fh:
-        for line in fh:
-            if line.strip().startswith("Number of input reads"):
-                msg += f"Number of input reads: {line.split('|')[-1].strip()}.\n"
-                continue
-            if line.strip().startswith("Uniquely mapped reads number"):
-                msg += f"Uniquely mapped reads number: {line.split('|')[-1].strip()}.\n"
-                continue               
-            if line.strip().startswith("Uniquely mapped reads %"):
-                msg += f"Uniquely mapped reads %: {line.split('|')[-1].strip()}.\n"
-                if float(line.split('|')[-1].strip().replace("%", "")) < 50:
-                    flag = True
-                    msg += "Uniquely mapped reads is low, please check --genomeDir!\n"
-                continue
-            if line.strip().startswith("Number of reads mapped to multiple loci:"):
-                msg += f"Number of reads mapped to multiple loci: {line.split('|')[-1].strip()}.\n"
-                continue
-            if line.strip().startswith("% of reads mapped to multiple loci"):
-                msg += f"% of reads mapped to multiple loci: {line.split('|')[-1].strip()}."
-                continue
-        if flag:
-            logger.warning(msg)
-        else:
-            logger.info(msg)
-
-def qualimap_report(logfile):
-    msg = "\n"
-    sc5p = None
-    with open(logfile, "r") as f:
-        for line in f:
-            if line.strip().startswith("exonic = "):
-                exonic = line.strip().split(" = ")[-1]
-                msg += f"exonic: {exonic}.\n"
-                continue
-            if line.strip().startswith("intronic = "):
-                intronic = line.strip().split(" = ")[-1]
-                msg += f"intronic: {intronic}.\n"
-                continue
-            if line.strip().startswith("intergenic = "):
-                intergenic = line.strip().split(" = ")[-1]
-                msg += f"intergenic: {intergenic}.\n"
-                continue
-            if line.strip().startswith("5' bias ="):
-                ratio_5 = line.strip().split(" = ")[-1]
-                msg += f"5' bias: {ratio_5}.\n"
-                continue
-            if line.strip().startswith("5' bias ="):
-                ratio_5 = line.strip().split(" = ")[-1]
-                msg += f"5' bias: {ratio_5}.\n"
-                continue
-            if line.strip().startswith("3' bias ="):
-                ratio_3 = line.strip().split(" = ")[-1]
-                msg += f"3' bias: {ratio_3}.\n"
-                break
-        try:
-            ratio_5 = float(ratio_5)
-            ratio_3 = float(ratio_3)
-            ratio = ratio_5/(ratio_3+0.0000001)
-        except:
-            ratio = None
-        msg += f"ratio between mean coverage at the 5’ region and the 3’ region: {ratio:.3f}.\n"
-        if not ratio:
-            msg += f"Since ratio is None, we presume product is with 3' chemistry!\n"
-            sc5p = None
-        elif ratio>2:
-            sc5p = True
-            msg += "Since ratio > 2, we presume product is with 5' chemistry.\n"
-        elif ratio<0.5:
-            sc5p = False
-            msg += f"Since ratio < 0.5, we presume product is with 3' chemistry."
-    return sc5p, msg
+from .chemistry import ATAC_R1_MINLEN, ATAC_R2_MINLEN, CHEMISTRY
+from .wrappers import cmd_execute
 
 def barcode_report(logfile):
     with open(logfile) as fh:
@@ -132,7 +51,7 @@ def chemistry_auto(fq1, fq2, outdir, use_short_read=False, **kwargs):
     for chem in test_chems:
         logger.info(f"test {chem}!")
         barcode_main([fq1_1M,], [fq2_1M,], chem, f"{_outdir}/{chem}", core=1, use_short_read=use_short_read, **CHEMISTRY[chem])
-        rate = barcode_report(f"{_outdir}/{chem}/{chem}_summary.json")
+        rate = barcode_report(f"{_outdir}/{chem}/{chem}_A_summary.json")
         rate_dict[chem] = rate
     for k, v in rate_dict.items():
         logger.info(f"valid barcode rate of {k}: {v*100:.3f}%")
@@ -143,8 +62,6 @@ def chemistry_auto(fq1, fq2, outdir, use_short_read=False, **kwargs):
             chemistry = "MM"
     else:
         chemistry = kwargs["chemistry"]
-    
-    _fq2_1M = f"{_outdir}/{chemistry}/step1/{chemistry}_2.fq.gz"
 
     return CHEMISTRY[chemistry]
 
@@ -323,7 +240,7 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
                 flag, r1, r2 = adapter_filter.filter(r1, r2)
                 if flag:
                     if (not use_short_read) or len(r1) == 0 or len(r2) == 0:
-                        if len(r1) < R1_MINLEN or len(r2) < R2_MINLEN:
+                        if len(r1) < ATAC_R1_MINLEN or len(r2) < ATAC_R2_MINLEN:
                             stat_Dict["too_short"] += 1
                             continue
                     else:
@@ -364,7 +281,7 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
             "r2_q": R2_Q_Counter
         }
 
-def barcode_main(fq1:list, fq2:list, atacname: str, outdir:str,
+def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
                  barcode:list=[], match_type:list=[], shift:str=True, shift_pattern:str="A",
                  structure:str="B8L8B8L10B8U12T15", linker: list=[],
                  core:int=4, do_B_correction=True, do_L_correction=True,
@@ -415,6 +332,7 @@ def barcode_main(fq1:list, fq2:list, atacname: str, outdir:str,
     
     stat = QcStat()
     
+    atacname = f"{samplename}_A"
     os.makedirs(f"{outdir}/step1", exist_ok=True)
     fqout = os.path.join(outdir, f"step1/{atacname}")
     fqout_multi = os.path.join(outdir, f"step1/{atacname}_multi")
@@ -469,7 +387,7 @@ def barcode_main(fq1:list, fq2:list, atacname: str, outdir:str,
                 flag, r1, r2 = adapter_filter.filter(r1, r2)
                 if flag:
                     if (not use_short_read) or len(r1) == 0 or len(r2) == 0:
-                        if len(r1) < R1_MINLEN or len(r2) < R2_MINLEN:
+                        if len(r1) < ATAC_R1_MINLEN or len(r2) < ATAC_R2_MINLEN:
                             multi_stat["too_short"] += 1
                             stat.data["stat"]["too_short"] += 1
                             continue

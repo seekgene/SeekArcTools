@@ -21,7 +21,7 @@ else:
 
 def check_path(path):
     if not os.path.exists(path):
-        print(f"Error : The path of '{path}' is not exists")
+        logger.info(f"Error : The path of '{path}' is not exists")
         sys.exit(1)  # stop
     else:
         return path
