@@ -11,6 +11,7 @@ import json
 import gzip
 import scipy.io
 from ..utils.helper import logger
+from ..utils.wrappers import cmd_execute
 
 
 def makedict(chrlenfile):
@@ -34,6 +35,16 @@ def calulate_chunck_size(detail_file):
     chunck_size = int(line_count/n_split) + 1
     return chunck_size
 
+def check_fragments(step3dir, atacname):
+    fragpath=os.path.join(step3dir, atacname) + "_fragments.tsv.gz"
+    fragindex=os.path.join(step3dir, atacname) + "_fragments.tsv.gz.tbi"
+    if os.path.exists(fragpath):
+        cmd7 = f"rm {fragpath}"
+        cmd_execute(cmd7, check=True)
+    if os.path.exists(fragindex):
+        cmd8 = f"rm {fragindex}"
+        cmd_execute(cmd8, check=True)
+
 
 def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, organism:str, refpath:str, 
             bedtoolspath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", 
@@ -41,6 +52,7 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     atacname = f"{samplename}_A"
     step3dir = os.path.join(outdir, "step3")
     os.makedirs(step3dir, exist_ok=True)
+    check_fragments(step3dir, atacname)
 
     chrNameLength = os.path.join(refpath, "star", 'chrNameLength.txt')
     assert os.path.exists(chrNameLength), f'{chrNameLength} not found!'
@@ -294,21 +306,21 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     filter_atac.write(os.path.join(step3dir, atacname+"_snapatac2_filter.h5ad"))
     filter_peak_mat = snap.pp.make_peak_matrix(filter_atac, use_rep=peaks, counting_strategy='insertion')
 
-    # output filter_peaks_bc_matrix dir
-    os.makedirs(os.path.join(step3dir, "filter_peaks_bc_matrix"), exist_ok=True)
-    scipy.io.mmwrite(os.path.join(step3dir, "filter_peaks_bc_matrix/matrix.mtx"), filter_peak_mat.X.T.astype(np.float32))
-    with open(os.path.join(step3dir, "filter_peaks_bc_matrix/matrix.mtx"), 'rb') as f_in:
-        with gzip.open(os.path.join(step3dir, "filter_peaks_bc_matrix/matrix.mtx.gz"), 'wb') as f_out:
+    # output filtered_peaks_bc_matrix dir
+    os.makedirs(os.path.join(step3dir, "filtered_peaks_bc_matrix"), exist_ok=True)
+    scipy.io.mmwrite(os.path.join(step3dir, "filtered_peaks_bc_matrix/matrix.mtx"), filter_peak_mat.X.T.astype(np.float32))
+    with open(os.path.join(step3dir, "filtered_peaks_bc_matrix/matrix.mtx"), 'rb') as f_in:
+        with gzip.open(os.path.join(step3dir, "filtered_peaks_bc_matrix/matrix.mtx.gz"), 'wb') as f_out:
             f_out.writelines(f_in)
-    with gzip.open(os.path.join(step3dir, "filter_peaks_bc_matrix/features.tsv.gz"), 'wt') as f:
+    with gzip.open(os.path.join(step3dir, "filtered_peaks_bc_matrix/features.tsv.gz"), 'wt') as f:
         for feature in filter_peak_mat.var_names:
             f.write(f"{feature}\t{feature}\tpeaks\n")
-    with gzip.open(os.path.join(step3dir, "filter_peaks_bc_matrix/barcodes.tsv.gz"), 'wt') as f:
+    with gzip.open(os.path.join(step3dir, "filtered_peaks_bc_matrix/barcodes.tsv.gz"), 'wt') as f:
         for cellbarcode in filter_peak_mat.obs_names:
             f.write(f"{cellbarcode}\n")
-    os.remove(os.path.join(step3dir, "filter_peaks_bc_matrix/matrix.mtx"))
+    os.remove(os.path.join(step3dir, "filtered_peaks_bc_matrix/matrix.mtx"))
 
-    logger.info("output filter_peaks_bc_matrix done!")
+    logger.info("output filtered_peaks_bc_matrix done!")
 
 
     # ---------------cell count---------------

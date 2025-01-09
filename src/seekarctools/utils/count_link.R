@@ -3,13 +3,12 @@ suppressPackageStartupMessages({
   library(Signac)
   library(Seurat)
   library(dplyr)
-  library(BiocParallel)
   library(argparse)
 })
 
 parser = ArgumentParser()
 parser$add_argument("--gex_matrix", help="gex. step3/filtered_feature_bc_matrix")
-parser$add_argument("--atac_matrix", help="atac. step3/filter_peaks_bc_matrix")
+parser$add_argument("--atac_matrix", help="atac. step3/filtered_peaks_bc_matrix")
 parser$add_argument("--fragpath", help="atac. step3/asample_fragments.tsv.gz")
 parser$add_argument("--rawname", help="raw name")
 parser$add_argument("--samplename", help="sample name")
@@ -39,7 +38,6 @@ core=args$core
 memory=args$memory
 anno_rds=args$anno_rds
 
-cat("------------check memory------------------------\n")
 cat("available memory:", memory, "\n")
 
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
@@ -131,7 +129,7 @@ obj <- FindTopFeatures(obj, min.cutoff = 5)
 obj <- RunTFIDF(obj)
 obj <- RunSVD(obj)
 obj <- RunUMAP(object = obj, reduction = 'lsi', dims = 2:30, reduction.name = "atacumap", reduction.key = "atacumap_")
-obj <- RunTSNE(obj, reduction = 'lsi', dims = 2:30, reduction.name = "atactsne", reduction.key = "atactsne_")
+obj <- RunTSNE(obj, reduction = 'lsi', dims = 2:30, reduction.name = "atactsne", reduction.key = "atactsne_", check_duplicates = FALSE)
 obj <- FindNeighbors(object = obj, reduction = 'lsi', dims = 2:30)
 obj <- FindClusters(object = obj, verbose = FALSE, algorithm = 3)
 # ATAC tsne
@@ -169,10 +167,11 @@ obj <- RunTSNE(
   reduction.name = "wnntsne",
   reduction.key = "wnntsne_",
   assay = "RNA",
-  verbose = TRUE
+  verbose = TRUE,
+  check_duplicates = FALSE
 )
 cat("------------WNN cluster end------------------------\n")
-saveRDS(obj,file='signac_obj.rds')
+saveRDS(obj,file=paste0(samplename,'.rds'))
 
 cat("------------Linking peaks to genes start------------------------\n")
 # Linking peaks to genes

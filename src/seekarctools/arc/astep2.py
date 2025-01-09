@@ -2,8 +2,12 @@ import os
 import json
 from collections import defaultdict
 from ..utils.helper import logger
-from ..utils.wrappers import bwamem_wrapper
+from ..utils.wrappers import bwamem_wrapper, cmd_execute
 
+def check_bam(bampath):
+    if os.path.exists(bampath):
+        cmd = f"rm {bampath}"
+        cmd_execute(cmd, check=True)
 
 def align(
     afq:list, genomefa:str, samplename:str, outdir:str, core:int=4, bwa_path:str="bwa", **kwargs):
@@ -12,6 +16,8 @@ def align(
     bwa_dir = os.path.join(basedir, "bwa_pe")
     os.makedirs(bwa_dir, exist_ok=True)
     prefix = os.path.join(bwa_dir, atacname + "_")
+    bampath = f'{prefix}mem_pe_Sort.bam'
+    check_bam(bampath)
 
     logger.info("BWA mem started!")
     bam = bwamem_wrapper(

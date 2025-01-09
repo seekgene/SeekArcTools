@@ -158,7 +158,7 @@ def astep2(obj, **kwargs):
 @click.option("--min_len", default=400, show_default=True, help="The minimum length of a called peak. If None, it is set to 'extsize'.")
 @click.pass_obj
 def astep3(obj, **kwargs):
-    from .astep3 import makedict, calulate_chunck_size, get_int_type, runpipe
+    from .astep3 import runpipe
     runpipe(**kwargs)
 
 @arc.command(help="ATAC do signac.")
@@ -340,7 +340,7 @@ def run(obj, **kwargs):
         runpipe(bam=atacbam, **kwargs)
 
     kwargs["gex_matrix"] = matrix
-    atacmatrix = os.path.join(kwargs["outdir"], "step3", "filter_peaks_bc_matrix")
+    atacmatrix = os.path.join(kwargs["outdir"], "step3", "filtered_peaks_bc_matrix")
     kwargs["atac_matrix"] = atacmatrix
     atac_rawmatrix = os.path.join(kwargs["outdir"], "step3", "raw_peaks_bc_matrix")
     kwargs["fragpath"] = os.path.join(kwargs["outdir"], "step3", f"{kwargs['atacname']}_fragments.tsv.gz")
@@ -357,45 +357,20 @@ def run(obj, **kwargs):
     featureCountsDir = os.path.join(sampleoutdir, 'analysis', kwargs["gexname"], "step2", "featureCounts")
     bwaDir = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step2", "bwa_pe")
     astep3Dir = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3")
-    peakfile = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs["atacname"], "_peaks.bed")
-    rds_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step4", "signac_obj.rds")
-    cmd1 = f"cd {featureCountsDir}; mv {kwargs['gexname']}_SortedByName.bam ../../../../outs/; ln -s ../../../../outs/{kwargs['gexname']}_SortedByName.bam {kwargs['gexname']}_SortedByName.bam"
+    peakfile = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", f"{kwargs['atacname']}_peaks.bed")
+    rds_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step4", f"{kwargs['samplename']}.rds")
+    cmd1 = f"cd {featureCountsDir}; mv {kwargs['gexname']}_SortedByName.bam ../../../../outs/; ln -sf ../../../../outs/{kwargs['gexname']}_SortedByName.bam {kwargs['gexname']}_SortedByName.bam"
     cmd_execute(cmd1, check=True)
-    cmd2 = f"cd {bwaDir}; mv {kwargs['atacname']}_mem_pe_Sort.bam ../../../../outs/; ln -s ../../../../outs/{kwargs['atacname']}_mem_pe_Sort.bam {kwargs['atacname']}_mem_pe_Sort.bam"
+    cmd2 = f"cd {bwaDir}; mv {kwargs['atacname']}_mem_pe_Sort.bam ../../../../outs/; ln -sf ../../../../outs/{kwargs['atacname']}_mem_pe_Sort.bam {kwargs['atacname']}_mem_pe_Sort.bam"
     cmd_execute(cmd2, check=True)
-    cmd3 = f"cd {astep3Dir}; mv {kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz.tbi ../../../outs/; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz.tbi {kwargs['atacname']}_fragments.tsv.gz.tbi"
+    cmd3 = f"cd {astep3Dir}; mv {kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz.tbi ../../../outs/; ln -sf ../../../outs/{kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz; ln -sf ../../../outs/{kwargs['atacname']}_fragments.tsv.gz.tbi {kwargs['atacname']}_fragments.tsv.gz.tbi"
     cmd_execute(cmd3, check=True)
-    cmd4 = f"cp -r {kwargs['gex_matrix']} {kwargs['outdir']}; cp -r {kwargs['raw_matrix']} {kwargs['outdir']}"
+    cmd4 = f"cp -rf {kwargs['gex_matrix']} {kwargs['outdir']}; cp -rf {kwargs['raw_matrix']} {kwargs['outdir']}"
     cmd_execute(cmd4, check=True)
-    cmd5 = f"cp -r {kwargs['atac_matrix']} {kwargs['outdir']} ; cp -r {atac_rawmatrix} {kwargs['outdir']}"
+    cmd5 = f"cp -rf {kwargs['atac_matrix']} {kwargs['outdir']} ; cp -rf {atac_rawmatrix} {kwargs['outdir']}"
     cmd_execute(cmd5, check=True)
     cmd6 = f"cp {peakfile} {kwargs['outdir']} ; mv {rds_file} {kwargs['outdir']}"
     cmd_execute(cmd6, check=True)
-
-    # cmd = ("cd {featureCountsDir}; mv {gexname}_SortedByName.bam ../../../../outs/; ln -s ../../../../outs/{gexname}_SortedByName.bam {gexname}_SortedByName.bam; "
-    #        "cd {bwaDir}; mv {atacname}_mem_pe_Sort.bam ../../../../outs/; ln -s ../../../../outs/{atacname}_mem_pe_Sort.bam {atacname}_mem_pe_Sort.bam; "
-    #        "cd {astep3Dir}; mv {atacname}_fragments.tsv.gz ../../../outs/; ln -s ../../../outs/{atacname}_fragments.tsv.gz {atacname}_fragments.tsv.gz; "
-    #        "mv {atacname}_fragments.tsv.gz.tbi ../../../outs/; ln -s ../../../outs/{atacname}_fragments.tsv.gz.tbi {atacname}_fragments.tsv.gz.tbi; "
-    #        "cp -r {gex_matrix} {outsdir} ; "
-    #        "cp -r {raw_matrix} {outsdir} ; "
-    #        "cp -r {atac_matrix} {outsdir} ; "
-    #        "cp -r {atac_rawmatrix} {outsdir} ; "
-    #        "cp {peakfile} {outsdir} ; "
-    #        "mv {rds_file} {outsdir}"
-    #     ).format(
-    #         featureCountsDir=featureCountsDir,
-    #         bwaDir=bwaDir,
-    #         astep3Dir=astep3Dir,
-    #         gexname=kwargs['gexname'],
-    #         atacname=kwargs['atacname'],
-    #         gex_matrix=kwargs["gex_matrix"], 
-    #         raw_matrix=kwargs["raw_matrix"],
-    #         atac_matrix=kwargs["atac_matrix"],
-    #         atac_rawmatrix=atac_rawmatrix,
-    #         peakfile=peakfile,
-    #         rds_file=rds_file,
-    #         outsdir=kwargs["outdir"])
-    # run(cmd, shell=True)
 
 @arc.command(help="retry some steps.")
 @click.pass_obj
@@ -440,14 +415,14 @@ def retry(obj, **kwargs):
     sampleoutdir = kwargs["outdir"]
     kwargs["gexname"] = f'{kwargs["samplename"]}_E'
     kwargs["atacname"] = f'{kwargs["samplename"]}_A'
-    fragpath=os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs['atacname']) + "_fragments.tsv.gz"
-    fragindex=os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs['atacname']) + "_fragments.tsv.gz.tbi"
-    if os.path.exists(fragpath):
-        cmd7 = f"rm {fragpath}"
-        cmd_execute(cmd7, check=True)
-    if os.path.exists(fragindex):
-        cmd8 = f"rm {fragindex}"
-        cmd_execute(cmd8, check=True)
+    # fragpath=os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs['atacname']) + "_fragments.tsv.gz"
+    # fragindex=os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs['atacname']) + "_fragments.tsv.gz.tbi"
+    # if os.path.exists(fragpath):
+    #     cmd7 = f"rm {fragpath}"
+    #     cmd_execute(cmd7, check=True)
+    # if os.path.exists(fragindex):
+    #     cmd8 = f"rm {fragindex}"
+    #     cmd_execute(cmd8, check=True)
     
 
     if kwargs["forceCell"] != None:
@@ -472,7 +447,7 @@ def retry(obj, **kwargs):
         from .astep3 import runpipe
         runpipe(bam=atacbam, **kwargs)
 
-        kwargs["atac_matrix"] = os.path.join(kwargs["outdir"], "step3", "filter_peaks_bc_matrix")
+        kwargs["atac_matrix"] = os.path.join(kwargs["outdir"], "step3", "filtered_peaks_bc_matrix")
         atac_rawmatrix = os.path.join(kwargs["outdir"], "step3", "raw_peaks_bc_matrix")
         kwargs["fragpath"] = os.path.join(kwargs["outdir"], "step3", f"{kwargs['atacname']}_fragments.tsv.gz")
         kwargs["atacjson"] = os.path.join(kwargs["outdir"], f"{kwargs['atacname']}_summary.json")
@@ -487,14 +462,14 @@ def retry(obj, **kwargs):
 
         # summary file
         astep3Dir = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3")
-        peakfile = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs["atacname"], "_peaks.bed")
-        rds_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step4", "signac_obj.rds")
+        peakfile = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", f"{kwargs['atacname']}_peaks.bed")
+        rds_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step4", f"{kwargs['samplename']}.rds")
         
-        cmd3 = f"cd {astep3Dir}; mv {kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz.tbi ../../../outs/; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz.tbi {kwargs['atacname']}_fragments.tsv.gz.tbi"
+        cmd3 = f"cd {astep3Dir}; mv {kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz.tbi ../../../outs/; ln -sf ../../../outs/{kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz; ln -sf ../../../outs/{kwargs['atacname']}_fragments.tsv.gz.tbi {kwargs['atacname']}_fragments.tsv.gz.tbi"
         cmd_execute(cmd3, check=True)
-        cmd4 = f"cp -r {kwargs['gex_matrix']} {kwargs['outdir']}; cp -r {kwargs['raw_matrix']} {kwargs['outdir']}"
+        cmd4 = f"cp -rf {kwargs['gex_matrix']} {kwargs['outdir']}; cp -rf {kwargs['raw_matrix']} {kwargs['outdir']}"
         cmd_execute(cmd4, check=True)
-        cmd5 = f"cp -r {kwargs['atac_matrix']} {kwargs['outdir']} ; cp -r {atac_rawmatrix} {kwargs['outdir']}"
+        cmd5 = f"cp -rf {kwargs['atac_matrix']} {kwargs['outdir']} ; cp -rf {atac_rawmatrix} {kwargs['outdir']}"
         cmd_execute(cmd5, check=True)
         cmd6 = f"cp {peakfile} {kwargs['outdir']} ; mv {rds_file} {kwargs['outdir']}"
         cmd_execute(cmd6, check=True)
@@ -509,7 +484,7 @@ def retry(obj, **kwargs):
         from .astep3 import runpipe
         runpipe(bam=atacbam, **kwargs)
         kwargs["gex_matrix"] = os.path.join(sampleoutdir, 'analysis', kwargs["gexname"], "step3", "filtered_feature_bc_matrix")
-        kwargs["atac_matrix"] = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", "filter_peaks_bc_matrix")
+        kwargs["atac_matrix"] = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", "filtered_peaks_bc_matrix")
         atac_rawmatrix = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", "raw_peaks_bc_matrix")
         kwargs["fragpath"] = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", f"{kwargs['atacname']}_fragments.tsv.gz")
 
@@ -525,12 +500,12 @@ def retry(obj, **kwargs):
 
         # summary file
         astep3Dir = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3")
-        peakfile = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", kwargs["atacname"], "_peaks.bed")
-        rds_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step4", "signac_obj.rds")
+        peakfile = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step3", f"{kwargs['atacname']}_peaks.bed")
+        rds_file = os.path.join(sampleoutdir, 'analysis', kwargs["atacname"], "step4", f"{kwargs['samplename']}.rds")
 
-        cmd3 = f"cd {astep3Dir}; mv {kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz.tbi ../../../outs/; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz; ln -s ../../../outs/{kwargs['atacname']}_fragments.tsv.gz.tbi {kwargs['atacname']}_fragments.tsv.gz.tbi"
+        cmd3 = f"cd {astep3Dir}; mv {kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz.tbi ../../../outs/; ln -sf ../../../outs/{kwargs['atacname']}_fragments.tsv.gz {kwargs['atacname']}_fragments.tsv.gz; ln -sf ../../../outs/{kwargs['atacname']}_fragments.tsv.gz.tbi {kwargs['atacname']}_fragments.tsv.gz.tbi"
         cmd_execute(cmd3, check=True)
-        cmd5 = f"cp -r {kwargs['atac_matrix']} {kwargs['outdir']} ; cp -r {atac_rawmatrix} {kwargs['outdir']}"
+        cmd5 = f"cp -rf {kwargs['atac_matrix']} {kwargs['outdir']} ; cp -rf {atac_rawmatrix} {kwargs['outdir']}"
         cmd_execute(cmd5, check=True)
         cmd6 = f"cp {peakfile} {kwargs['outdir']} ; mv {rds_file} {kwargs['outdir']}"
         cmd_execute(cmd6, check=True)

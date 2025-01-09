@@ -2,6 +2,7 @@ import os
 import json
 from collections import defaultdict
 from ..utils.helper import logger
+from ..utils.wrappers import cmd_execute
 
 def mapping_summary(STARLog, RnaSeqMetrics):
     summary = defaultdict()
@@ -40,6 +41,10 @@ def mapping_summary(STARLog, RnaSeqMetrics):
                 break
     return summary
 
+def check_bam(bampath):
+    if os.path.exists(bampath):
+        cmd = f"rm {bampath}"
+        cmd_execute(cmd, check=True)
 
 def align(
     fq:list, genomeDir:str, gtf:str, samplename:str, outdir:str, region:str,
@@ -155,6 +160,8 @@ def align(
     else:
         logger.info("SortByName started!")
         from ..utils.wrappers import samtools_sort_wrapper
+        bampath = os.path.join(featureCounts_dir, f"{gexname}_SortedByName.bam")
+        check_bam(bampath)
         bam = samtools_sort_wrapper(
             bam,
             os.path.join(featureCounts_dir, f"{gexname}_SortedByName.bam"),
