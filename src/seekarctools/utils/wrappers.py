@@ -71,7 +71,7 @@ def bwamem_wrapper(
     ):
     """wrapper for bwa-mem"""
 
-    args = ('{bwa_path} mem -t {core} -M -R "@RG\\tID:{atacname}\\tLB:WGS\\tPL:Illumina\\tPU:{atacname}\\tSM:{atacname}" {genomefa} '
+    args = ('{bwa_path} mem -t {core} -M -I 250[150,1000,1] -R "@RG\\tID:{atacname}\\tLB:WGS\\tPL:Illumina\\tPU:{atacname}\\tSM:{atacname}" {genomefa} '
             '{astep1_fq1} {astep1_fq2} | {samtools_path} sort -@ {core} -o {prefix}mem_pe_Sort.bam').format(
                 bwa_path=bwa_path, core=core, atacname=atacname, genomefa=genomefa, astep1_fq1=afq[0], astep1_fq2=afq[-1], samtools_path=samtools_path, prefix=prefix)
     _ = cmd_execute(args)

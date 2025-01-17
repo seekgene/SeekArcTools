@@ -47,7 +47,12 @@ def arc(obj, steps):
 # @click.option("--chemistry", type=click.Choice(["DDV1", "DDV2", "DDVS", "DD5V1", "MM", "MM-D", "DD-Q", "custom"]), help="DDV1, DDV2, DDVS, DD5V1, MM, MM-D, DD-Q.")
 @click.pass_obj
 def estep1(obj, **kwargs):
-    kwargs["chemistry"] = "DD-Q"
+    if kwargs["barcode"]:
+        print(f'atac barcode path:{kwargs["barcode"]}')
+        kwargs["chemistry"] = "custom"
+    else:
+        kwargs["chemistry"] = "DD-Q"
+    # kwargs["chemistry"] = "DD-Q"
     from ..utils.barcode import check_rna_options
     chemistry_kwargs = check_rna_options(**kwargs)
     kwargs.update(chemistry_kwargs)
@@ -115,7 +120,12 @@ def callcell(obj, **kwargs):
 # @click.option("--chemistry", type=click.Choice(["DDV1", "DDV2", "DDVS", "DD5V1", "MM", "MM-D", "DD-Q", "custom"]), help="DDV1, DDV2, DDVS, DD5V1, MM, MM-D, DD-Q.")
 @click.pass_obj
 def astep1(obj, **kwargs):
-    kwargs["chemistry"] = "DD_AG"
+    if kwargs["barcode"]:
+        print(f'atac barcode path:{kwargs["barcode"]}')
+        kwargs["chemistry"] = "custom"
+    else:
+        kwargs["chemistry"] = "DD_AG"
+    # kwargs["chemistry"] = "DD_AG"
     from ..utils.atacbarcode import check_atac_options
     chemistry_kwargs = check_atac_options(**kwargs)
     kwargs.update(chemistry_kwargs)

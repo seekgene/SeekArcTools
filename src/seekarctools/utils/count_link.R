@@ -77,10 +77,6 @@ DefaultAssay(obj) <- "ATAC"
 features.keep <- as.character(seqnames(granges(obj))) %in% standardChromosomes(granges(obj))
 obj.filter <- obj[features.keep, ]
 obj[["ATAC"]] <- obj.filter[["ATAC"]]
-obj@tools$fragpath <- paste0('outs/', samplename, '_A_fragments.tsv.gz')
-names(obj@tools$fragpath)=rawname
-obj@tools$fragindex <- paste0('outs/', samplename, '_A_fragments.tsv.gz.tbi')
-names(obj@tools$fragindex)=rawname
 obj@meta.data$orig.ident <- rawname
 cat("------------filter end------------------------\n")
 

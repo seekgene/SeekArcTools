@@ -75,10 +75,10 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
 
     # make fragments and QC
     logger.info("make fragments and QC started!")
-    fragments_file = os.path.join(step3dir, atacname+"_fragments.tsv.gz")
+    raw_fragments_file = os.path.join(step3dir, atacname+"_raw_fragments.tsv.gz")
     bam_qc = snap.pp.make_fragment_file(
         bam_file=bam,
-        output_file=fragments_file,
+        output_file=raw_fragments_file,
         barcode_regex = "^(.*?)_",
         compression = 'gzip',
         compression_level = 6)
@@ -104,6 +104,14 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
 
     logger.info(f'Sequencing QC : {qc["Sequencing"]}')
     logger.info(f'Mapping QC : {qc["Mapping"]}')
+
+    fragments_file = os.path.join(step3dir, atacname+"_fragments.tsv.gz")
+    with gzip.open(raw_fragments_file, 'rt') as fh, gzip.open(fragments_file, "wt") as fhout:
+        for frag in fh:
+            chrname = frag.strip().split('\t')[0]
+            if chrname == 'chrM':
+                continue
+            fhout.write(frag)
 
     # make Anndata obj
     logger.info("make Anndata obj started!")
@@ -486,7 +494,7 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
            "{gunzippath} {atacname}_fragments.tsv.gz; "
            "{bedtoolspath} --max-mem {memory}G {atacname}_fragments.tsv > {atacname}_fragments_sort.tsv; "
            "{bgzippath} -c {atacname}_fragments_sort.tsv > {atacname}_fragments.tsv.gz; "
-           "{tabixpath} -p bed {atacname}_fragments.tsv.gz && rm {atacname}_fragments.tsv {atacname}_fragments_sort.tsv"
+           "{tabixpath} -p bed {atacname}_fragments.tsv.gz && rm {atacname}_fragments.tsv {atacname}_fragments_sort.tsv {atacname}_raw_fragments.tsv.gz"
         ).format(step3dir=step3dir, atacname=atacname, memory=memory, gunzippath=gunzippath, bedtoolspath=bedtoolspath, bgzippath=bgzippath, tabixpath=tabixpath)
     run(cmd, shell=True)
 

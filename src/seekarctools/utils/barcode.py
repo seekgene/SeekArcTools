@@ -14,7 +14,7 @@ def mapping_report(logfile):
     msg = "\n"
     flag = False
     if not os.path.exists(logfile):
-        with open(logfile.replace("_Log.final.out", "_1M_Log.out")) as fh:
+        with open(logfile.replace("_Log.final.out", "_Log.out")) as fh:
             err_message = fh.read()
             logger.error(err_message)
             sys.exit(2)
