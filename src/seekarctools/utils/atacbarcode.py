@@ -6,7 +6,7 @@ import itertools
 from functools import partial
 from .pipeline import Pipeline
 from collections import defaultdict, Counter
-from .helper import AdapterFilter, QcStat, parse_structure, read_file, get_new_bc, logger
+from .helper import AdapterFilter, QcStat, parse_structure, read_file, get_new_bc, logger, hamming_distance
 from .chemistry import ATAC_R1_MINLEN, ATAC_R2_MINLEN, CHEMISTRY
 from .wrappers import cmd_execute
 
@@ -255,9 +255,28 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
                 else:
                     _alt = "M"
 
-                r2.name = "_".join([barcode_new, umi, _alt, r2.name])
-                r1.name = "_".join([barcode_new, umi, _alt, r1.name])
-                outfh.write(r1, r2)
+                # r2.name = "_".join([barcode_new, umi, _alt, r2.name])
+                # r1.name = "_".join([barcode_new, umi, _alt, r1.name])
+
+                r1_name = "_".join([barcode_new, umi, _alt, r1.name])
+                r2_name = "_".join([barcode_new, umi, _alt, r2.name])
+                if len(r1) <= 50:
+                    r1_seq = r1.sequence
+                    r1_qua = r1.qualities
+                    re1 = dnaio.Sequence(name = r1_name, sequence = r1_seq, qualities = r1_qua)
+                else:
+                    r1_seq = r1.sequence[:50]
+                    r1_qua = r1.qualities[:50]
+                    re1 = dnaio.Sequence(name = r1_name, sequence = r1_seq, qualities = r1_qua)
+                if len(r2) <= 50:
+                    r2_seq = r2.sequence
+                    r2_qua = r2.qualities
+                    re2 = dnaio.Sequence(name = r2_name, sequence = r2_seq, qualities = r2_qua)
+                else:
+                    r2_seq = r2.sequence[:50]
+                    r2_qua = r2.qualities[:50]
+                    re2 = dnaio.Sequence(name = r2_name, sequence = r2_seq, qualities = r2_qua)
+                outfh.write(re1, re2)
             if is_correct:
                 stat_Dict["B_corrected"] += 1
         else:

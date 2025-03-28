@@ -9,8 +9,8 @@ ADAPTERS = {
 
 R1_MINLEN = 20
 R2_MINLEN = 60
-ATAC_R1_MINLEN = 10
-ATAC_R2_MINLEN = 10
+ATAC_R1_MINLEN = 20
+ATAC_R2_MINLEN = 60
 
 CHEMISTRY = {
     '__SO01V3':{
@@ -87,10 +87,8 @@ CHEMISTRY = {
         'shift': False,
         'structure': 'B17U12X7',
         'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
-        # TSO:  AAGCAGTGGTATCAACGCAGAGTACATGG
-	#ACACTCTTTCCCTACACGACGCTCTTCCGATCT
-        'adapter1': [["GATCGGAAGAGCACACGTCTGAACTCCAGTCAC", "3"], ["ACACTCTTTCCCTACACGACGCTCTTCCGATCT", "5"], ], ## SP2 SP1
-        'adapter2': [["AAGCAGTGGTATCAACGCAGAGTACATGG", "5"], ["GTGACTGGAGTTCAGACGTGTGCTCTTCCGATC", "5"], ], ## TSO SP2 reverse complement
+        'adapter1': [["TTGCTGT", "5"], ["AAGCAGTGGTATCAACGCAGAGTACATGG", "3"], ], ## 7F TSO
+        'adapter2': [["CCATGTACTCTGCGTTGATACCACTGCTT", "5"], ["AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT", "3"], ], ## TSO-rev SP1-rev
         'sc5p': None,
         'match_type': (1,),
     },
@@ -98,8 +96,8 @@ CHEMISTRY = {
         'shift': False,
         'structure': 'B17U12',
         'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
-        'adapter1': [["CTGTCTCTTATACACATCTCCGAGCCCACGAGAC", "3"], ["ACACTCTTTCCCTACACGACGCTCTTCCGATCT", "5"], ["TTTTTTTTTTTT", "5"] ], ## SP2 SP1
-        'adapter2': [["GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG", "5"], ["AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT", "3"], ["CTGTCTCTTATACACATCTACGAGCAACGACGGACG", "3"]], ## TSO SP2 reverse complement
+        'adapter1': [["CTGTCTCTTATACACATCTCCGAGCCCACGAGAC", "3"], ["ACACTCTTTCCCTACACGACGCTCTTCCGATCT", "5"], ["CGTCCGTCGTTGCTCGTAGATGTGTATAAGAGACAG", "5"]], ## SP2 SP1 17L19ME
+        'adapter2': [["GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG", "5"], ["CTGTCTCTTATACACATCTACGAGCAACGACGGACG", "3"]], ## SP2-rev 17L19ME-rev
         'match_type': (1,),
     }
 }

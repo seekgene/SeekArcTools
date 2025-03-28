@@ -9,6 +9,13 @@ from xopen import xopen
 from cutadapt.adapters import FrontAdapter, BackAdapter, Sequence, RightmostFrontAdapter
 from ._version import __version__
 
+import multiprocessing as mp
+import functools
+from typing import List, Optional
+import importlib
+import subprocess
+import shutil
+
 # setup logger
 logger.remove()
 if os.environ.get("seeksoultools_debug", "False")=="True":
@@ -169,8 +176,8 @@ def get_new_bc(bc:str, white_list:set, distance:int)->set:
 class AdapterFilter:
     """过滤接头"""
     def __init__(self, adapter1:list=[], adapter2:list=[],):
-        self.adapter1 = [BackAdapter(sequence=_) if p=="3" else RightmostFrontAdapter(sequence=_) for _, p in adapter1]
-        self.adapter2 = [BackAdapter(sequence=_) if p=="3" else RightmostFrontAdapter(sequence=_) for _, p in adapter2]
+        self.adapter1 = [BackAdapter(sequence=_, min_overlap=15) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=7) for _, p in adapter1]
+        self.adapter2 = [BackAdapter(sequence=_, min_overlap=15) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=15) for _, p in adapter2]
     
     def filter(self, r1=None, r2=None) -> tuple:
         flag = False
@@ -230,3 +237,124 @@ class QcStat:
                 tmp[k] = dict(self.data[k])
         with open(path, 'w') as fh:
             json.dump(tmp, fh, indent=4)
+
+
+def check_cores(
+    requested_cores: int):
+    available_cores = mp.cpu_count()
+    if requested_cores > available_cores:
+        warning_msg = (
+            f"System has {available_cores} CPU cores available, but {requested_cores} cores were requested. "
+            f"Automatically adjusted to use {available_cores} cores."
+        )
+        logger.warning(warning_msg)
+        return available_cores
+    
+    return requested_cores
+def validate_cores(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'core' in kwargs:
+            kwargs['core'] = check_cores(kwargs['core'])
+        return f(*args, **kwargs)
+    return wrapper
+
+def check_dependencies(
+    python_packages: Optional[List[str]] = None,
+    r_packages: Optional[List[str]] = None
+    ) -> None:
+    missing_py = []
+    missing_r = []
+    
+    if python_packages:
+        for package in python_packages:
+            try:
+                importlib.import_module(package)
+            except ImportError:
+                missing_py.append(package)
+    
+    if r_packages:
+        r_check_cmd = """
+        Rscript -e 'installed <- as.character(installed.packages()[,"Package"]); \
+        cat(setdiff(c("%s"), installed), sep="\\n")'
+        """ % '","'.join(r_packages)
+        
+        try:
+            result = subprocess.check_output(r_check_cmd, shell=True).decode().strip().split('\n')
+            missing_r = [x for x in result if x]  
+        except subprocess.CalledProcessError:
+            logger.error("Unable to check R package, please make sure R is installed correctly")
+    
+    if missing_py or missing_r:
+        error_msg = []
+        if missing_py:
+            error_msg.append(f"loss package of Python: {', '.join(missing_py)}")
+        if missing_r:
+            error_msg.append(f"loss package of R: {', '.join(missing_r)}")
+        raise click.ClickException('\n'.join(error_msg))
+    success_msg = []
+    if python_packages:
+        success_msg.append(f"Python package check completed ({len(python_packages)} packages)")
+    if r_packages:
+        success_msg.append(f"R package check completed ({len(r_packages)} packages)")
+    logger.info("✓ " + ", ".join(success_msg) + "  All dependency packages have been checked")
+
+def check_external_tools(tools_config: dict) -> List[str]:
+    missing_tools = []
+    for tool, test_arg in tools_config.items():
+        if not shutil.which(tool):
+            missing_tools.append(tool)
+            logger.error(f"Software not found: {tool}")
+            continue
+        try:
+            result = subprocess.run(
+                [tool, test_arg],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=10,
+                text=True 
+            )
+            output = result.stdout if result.stdout else result.stderr
+            output = output.strip().split('\n')[0]  
+            
+            if result.returncode == 0 or output:
+                logger.info(f"{tool}: {output}")
+            else:
+                missing_tools.append(tool)
+                logger.error(f" The software {tool}  command fails to be executed")
+                
+        except subprocess.TimeoutExpired:
+            missing_tools.append(tool)
+            logger.error(f"{tool} The software command timed out")
+        except (subprocess.SubprocessError, OSError) as e:
+            missing_tools.append(tool)
+            logger.error(f"{tool} execution error: {str(e)}")
+
+    return missing_tools
+def check_all():
+    REQUIRED_PYTHON_PACKAGES = [
+    'snapatac2', 'snapatac2._snapatac2', 'numpy', 'pandas', 'collections', 'subprocess', 'psutil', 'scipy.io', 'scanpy', 'sklearn.cluster', 'sklearn.neighbors', 
+    'os', 'json', 'gzip', 'loguru', 'xopen', 'cutadapt.adapters', 'multiprocessing', 'functools', 'typing', 'importlib', 'shutil', 'click', 'jinja2', 'dnaio', 'itertools'
+    ]
+
+    REQUIRED_R_PACKAGES = [
+    'future', 'Signac', 'Seurat', 'dplyr', 'argparse'
+    ]
+
+    check_dependencies(
+    python_packages=REQUIRED_PYTHON_PACKAGES,
+    r_packages=REQUIRED_R_PACKAGES
+    )
+    ### check tools
+    REQUIRED_TOOLS = {
+    'qualimap': '--help',
+    'STAR': '--version',
+    'samtools': '--version',
+    'bedtools': '--version',
+    'sort-bed': '--version',
+    'gunzip': '--version',
+    'bgzip': '--version',
+    'tabix': '--version',
+    'bwa': ''
+    }
+    check_external_tools(REQUIRED_TOOLS)

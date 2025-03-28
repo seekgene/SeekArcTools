@@ -25,7 +25,7 @@ if (organism == "human") {
 } else if (organism == "mouse") {
     library(BSgenome.Mmusculus.UCSC.mm10)
 } else {
-    stop("Not human or mouse, please enter: 'human' or 'mouse'")
+    stop("Warning: Not human or mouse, pipeline does not run astep4")
 }
 
 outdir=args$outdir
@@ -59,9 +59,9 @@ cat("------------atac------------------------\n")
 atacobj
 
 cat("------------joint------------------------\n")
-jointcb <- colnames(atacobj)
-obj <- subset(gexobj, cells = jointcb)
-# obj <- gexobj
+# jointcb <- colnames(atacobj)
+# obj <- subset(gexobj, cells = jointcb)
+obj <- gexobj
 
 annotation <- readRDS(anno_rds)
 seqlevels(annotation) <- paste0('chr', seqlevels(annotation))
@@ -77,6 +77,7 @@ DefaultAssay(obj) <- "ATAC"
 features.keep <- as.character(seqnames(granges(obj))) %in% standardChromosomes(granges(obj))
 obj.filter <- obj[features.keep, ]
 obj[["ATAC"]] <- obj.filter[["ATAC"]]
+# obj[["ATAC"]] <- subset(obj[["ATAC"]], features = rownames(obj[["ATAC"]])[features.keep]) # seurat 5 
 obj@meta.data$orig.ident <- rawname
 cat("------------filter end------------------------\n")
 

@@ -4,8 +4,8 @@ from ..utils.helper import logger, get_file_path
 from ..utils.wrappers import cmd_execute
 
 def do_signac(
-    gex_matrix:str, atac_matrix:str, fragpath:str, samplename:str, organism:str, anno_rds:str, outdir:str, 
-    rscriptpath:str="Rscript", rawname:str="rawname", core:int=4, **kwargs):
+    gex_matrix:str, atac_matrix:str, fragpath:str, samplename:str, organism:str, outdir:str, 
+    rscriptpath:str="Rscript", rawname:str="rawname", anno_rds:str="anno.rds", core:int=4, **kwargs):
 
     logger.info("signac started!")
     outdir = os.path.join(outdir, "step4")

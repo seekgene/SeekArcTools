@@ -54,7 +54,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     atacdir = os.path.dirname(atacjson)
     linkfile = os.path.join(atacdir, 'step4', 'linked_feature.xls')
     if not os.path.exists(linkfile):
-        logger.info(f"Error : The path of '{linkfile}' is not exists")
+        logger.info(f"Warning : The path of '{linkfile}' is not exists. This may be due to the fact that the species is not human or mouse, causing the pipeline not running astep4")
         feature_link = 0
         link_gene = 0
         link_peak = 0
@@ -66,7 +66,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     # joint: title
     data_summary["Joint"][0]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["Joint"][0]["right"][0]["data"]["GEX Median genes per cell"] = f'{gex_summary["cells"]["Median Genes per Cell"]:,}'
-    data_summary["Joint"][0]["right"][0]["data"]["ATAC Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
+    data_summary["Joint"][0]["right"][0]["data"]["ATAC Median high-quality fragments overlapping peaks per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments in peaks per cell"]:,}'
     # joint: left_Sample riget_Joint Metrics
     data_summary["Joint"][1]["left"][0]["data"]["Sample ID"] = samplename
     data_summary["Joint"][1]["left"][0]["data"]["Sample description"] = rawname
@@ -88,12 +88,26 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     # joint: left_atac cluster riget_gex cluster
     atacdir = os.path.dirname(atacjson)
     gex_tsnefile = os.path.join(atacdir, 'step4', 'gex_tsne_umi.xls')
-    assert os.path.exists(gex_tsnefile), f'{gex_tsnefile} not found!'
-    gex_tsne1, gex_tsne2, gex_depth, gex_cluster = get_gex_tsne(gex_tsnefile)
+    # assert os.path.exists(gex_tsnefile), f'{gex_tsnefile} not found!'
+    if not os.path.exists(gex_tsnefile):
+        logger.info(f"Warning : The path of '{gex_tsnefile}' is not exists. This may be due to the fact that the species is not human or mouse, causing the pipeline not running astep4")
+        gex_tsne1 = []
+        gex_tsne2 = []
+        gex_depth = []
+        gex_cluster = []
+    else:
+        gex_tsne1, gex_tsne2, gex_depth, gex_cluster = get_gex_tsne(gex_tsnefile)
 
     atac_tsnefile = os.path.join(atacdir, 'step4', 'atac_tsne_umi.xls')
-    assert os.path.exists(atac_tsnefile), f'{atac_tsnefile} not found!'
-    atac_tsne1, atac_tsne2, atac_depth, atac_cluster = get_atac_tsne(atac_tsnefile)
+    # assert os.path.exists(atac_tsnefile), f'{atac_tsnefile} not found!'
+    if not os.path.exists(atac_tsnefile):
+        logger.info(f"Warning : The path of '{atac_tsnefile}' is not exists. This may be due to the fact that the species is not human or mouse, causing the pipeline not running astep4")
+        atac_tsne1 = []
+        atac_tsne2 = []
+        atac_depth = []
+        atac_cluster = []
+    else:
+        atac_tsne1, atac_tsne2, atac_depth, atac_cluster = get_atac_tsne(atac_tsnefile)
 
     data_summary["Joint"][3]["left"][0]["data"]["coordinate"]["tSNE1"] = atac_tsne1
     data_summary["Joint"][3]["left"][0]["data"]["coordinate"]["tSNE2"] = atac_tsne2
@@ -112,7 +126,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     # rna: title
     data_summary["Rna"][0]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["Rna"][0]["right"][0]["data"]["GEX Median genes per cell"] = f'{gex_summary["cells"]["Median Genes per Cell"]:,}'
-    data_summary["Rna"][0]["right"][0]["data"]["ATAC Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
+    data_summary["Rna"][0]["right"][0]["data"]["ATAC Median high-quality fragments overlapping peaks per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments in peaks per cell"]:,}'
     # rna: left_Sequencing riget_Saturation tu
     data_summary["Rna"][1]["left"][0]["data"]["Number of Reads"] = f'{gex_summary["stat"]["total"]:,}'
     data_summary["Rna"][1]["left"][0]["data"]["Valid Barcode"] = f'{gex_summary["stat"]["valid"]/gex_summary["stat"]["total"]:.2%}'
@@ -124,6 +138,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     u_total_base = sum([sum(v) for v in gex_summary["umi_q"].values()])
     u30_base = sum([sum(v[30:]) for v in gex_summary["umi_q"].values()])
     data_summary["Rna"][1]["left"][0]["data"]["Q30 Bases in UMI"] = f'{u30_base/u_total_base:.2%}'
+    # data_summary["Rna"][1]["left"][0]["data"]["Reads with Linker"] = f'{gex_summary["stat"]["seq_17L19ME"]/gex_summary["stat"]["total"]:.2%}'
     data_summary["Rna"][1]["right"][0]["data"]["x"] = [0, ] + gex_summary["downsample"]["Reads"]
     data_summary["Rna"][1]["right"][0]["data"]["y"] = [0, ] + gex_summary["downsample"]["saturation"]
     # rna: left_cells riget_Median Genes tu
@@ -144,14 +159,17 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
 
     # diff
     diff_table = os.path.join(atacdir, 'step4', 'gex_FindAllMarkers.xls')
-    assert os.path.exists(diff_table), f'{diff_table} not found!'
-    diff_data = pre_diff_data(diff_table)
-    data_summary["diff"] = diff_data
+    # assert os.path.exists(diff_table), f'{diff_table} not found!'
+    if not os.path.exists(diff_table):
+        logger.info(f"Warning : The path of '{diff_table}' is not exists. This may be due to the fact that the species is not human or mouse, causing the pipeline not running astep4")
+    else:
+        diff_data = pre_diff_data(diff_table)
+        data_summary["diff"] = diff_data
 
     # atac: title
     data_summary["ATAC"][0]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["ATAC"][0]["right"][0]["data"]["GEX Median genes per cell"] = f'{gex_summary["cells"]["Median Genes per Cell"]:,}'
-    data_summary["ATAC"][0]["right"][0]["data"]["ATAC Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
+    data_summary["ATAC"][0]["right"][0]["data"]["ATAC Median high-quality fragments overlapping peaks per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments in peaks per cell"]:,}'
     # atac: left_Sequencing riget_median_fragments tu
     data_summary["ATAC"][1]["left"][0]["data"]["Sequenced read pairs"] = f'{atac_summary["atac"]["Sequencing"]["Sequenced read pairs"]:,}'
     data_summary["ATAC"][1]["left"][0]["data"]["Valid barcodes"] = f'{atac_summary["atac"]["Sequencing"]["Valid barcodes"]:.2%}'
@@ -168,6 +186,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     data_summary["ATAC"][2]["left"][0]["data"]["Fraction of high-quality fragments in cells"] = f'{atac_summary["atac"]["Cells"]["Fraction of high-quality fragments in cells"]:.2%}'
     data_summary["ATAC"][2]["left"][0]["data"]["Fraction of transposition events in peaks in cells"] = f'{atac_summary["atac"]["Cells"]["Fraction of transposition events in peaks in cells"]:.2%}'
     data_summary["ATAC"][2]["left"][0]["data"]["Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
+    data_summary["ATAC"][2]["left"][0]["data"]["Median high-quality fragments overlapping peaks per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments in peaks per cell"]:,}'
     data_summary["ATAC"][2]["right"][0]["data"]["x1"] = atac_summary["atac"]["peaks_target"]["nocell_fragments"]
     data_summary["ATAC"][2]["right"][0]["data"]["y1"] = atac_summary["atac"]["peaks_target"]["nocell_frac"]
     data_summary["ATAC"][2]["right"][0]["data"]["x2"] = atac_summary["atac"]["peaks_target"]["cell_fragments"]

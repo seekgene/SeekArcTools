@@ -20,7 +20,7 @@
                     "title": "summary2",
                     "data": {
                         "GEX Median genes per cell": "-",
-                        "ATAC Median high-quality fragments per cell": "-"
+                        "ATAC Median high-quality fragments overlapping peaks per cell": "-"
                     }
                 }
             ]
@@ -35,7 +35,7 @@
                     "data": {
                         "Sample ID": "-",
                         "Sample description": "-",
-                        "Pipeline version": "seeksoultools 1.2.1 + snapatac2 2.7",
+                        "Pipeline version": "seeksoultools 1.2.2 + snapatac2 2.8",
                         "Reference path": "-",
                         "Chemistry": "-",
                         "Organism": "-",
@@ -204,7 +204,7 @@
                     "title": "summary2",
                     "data": {
                         "GEX Median genes per cell": "-",
-                        "ATAC Median high-quality fragments per cell": "-"
+                        "ATAC Median high-quality fragments overlapping peaks per cell": "-"
                     }
                 }
             ]
@@ -333,18 +333,10 @@
     },
     "diff": [],
     "marker": {
-        "human": {
-            "CD3D": "T cell",
-            "CD3E": "T cell",
-            "CD3G": "T cell",
-            "PTPRC": "pan-leukocyte protein"
-        },
-        "mouse": {
-            "CD3D": "T cell",
-            "CD3E": "T cell",
-            "CD3G": "T cell",
-            "PTPRC": "pan-leukocyte protein"
-        }
+        "CD3D": "T cell",
+        "CD3E": "T cell",
+        "CD3G": "T cell",
+        "PTPRC": "pan-leukocyte protein"
     },
     "ATAC": [
         {
@@ -366,7 +358,7 @@
                     "title": "summary2",
                     "data": {
                         "GEX Median genes per cell": "-",
-                        "ATAC Median high-quality fragments per cell": "-"
+                        "ATAC Median high-quality fragments overlapping peaks per cell": "-"
                     }
                 }
             ]
@@ -429,14 +421,16 @@
                         "Mean raw read pairs per cell": "-",
                         "Fraction of high-quality fragments in cells": "-",
                         "Fraction of transposition events in peaks in cells": "-",
-                        "Median high-quality fragments per cell": "-"
+                        "Median high-quality fragments per cell": "-",
+                        "Median high-quality fragments overlapping peaks per cell": "-"
                     },
                     "description": {
                         "Estimated number of cells": "The number of barcodes associated with cell-containing partitions",
                         "Mean raw read pairs per cell": "Total number of read pairs divided by the number of cell barcodes",
                         "Fraction of high-quality fragments in cells": "Fraction of high-quality fragments with a valid barcode that are associated with cell-containing partitions. High-quality fragments are defined as read pairs with a valid barcode that map to the nuclear genome with mapping quality > 30, are not chimeric and not duplicate.",
                         "Fraction of transposition events in peaks in cells": "Fraction of transposition events that are associated with cell-containing partitions and fall within peaks. Transposition events are located at both ends of all high-quality fragments. This metric measures the percentage of such events that overlap with peaks.",
-                        "Median high-quality fragments per cell": "The median number of high-quality fragments per cell barcode"
+                        "Median high-quality fragments per cell": "The median number of high-quality fragments per cell barcode",
+                        "Median high-quality fragments overlapping peaks per cell": "The median number of high-quality fragments overlapping peaks per cell barcode"
                     }
                 }
             ],

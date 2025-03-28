@@ -6,7 +6,7 @@ import itertools
 from functools import partial
 from .pipeline import Pipeline
 from collections import defaultdict, Counter
-from .helper import AdapterFilter, QcStat, parse_structure, read_file, get_new_bc, logger
+from .helper import AdapterFilter, QcStat, parse_structure, read_file, get_new_bc, logger, hamming_distance
 from .chemistry import R1_MINLEN, R2_MINLEN, CHEMISTRY
 from .wrappers import cmd_execute, STAR_wrapper, qualimap_wrapper, samtools_sort_wrapper
 
@@ -353,6 +353,10 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
                     outfh_multi.write(r1, r2)
             else:  #write r2 files
                 stat_Dict["valid"] += 1
+                seq_17l_3me = r1.sequence[:20]
+                if hamming_distance(seq_17l_3me, 'CGTCCGTCGTTGCTCGTAGA') <=2:
+                    stat_Dict["seq_17L19ME"] += 1
+                    continue
                 flag, r1, r2 = adapter_filter.filter(r1, r2)
                 if flag:
                     if (not use_short_read) or len(r1) == 0 or len(r2) == 0:

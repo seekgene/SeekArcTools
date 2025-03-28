@@ -3,15 +3,18 @@ import snapatac2._snapatac2
 import numpy as np
 import pandas as pd
 from collections import defaultdict
-import matplotlib.pyplot as plt
 from subprocess import run
 import psutil
 import os
 import json
 import gzip
 import scipy.io
+import scanpy as sc
+from sklearn.cluster import KMeans
+from sklearn.neighbors import NearestCentroid
 from ..utils.helper import logger
 from ..utils.wrappers import cmd_execute
+from ..utils import countUtil
 
 
 def makedict(chrlenfile):
@@ -45,10 +48,17 @@ def check_fragments(step3dir, atacname):
         cmd8 = f"rm {fragindex}"
         cmd_execute(cmd8, check=True)
 
+def log_transform(x, alpha=0.1):
+    return np.log(x + alpha)
 
-def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, organism:str, refpath:str, 
-            bedtoolspath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", 
-            core:int=4, qvalue:float=0.05, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, **kwargs):
+
+def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, refpath:str, 
+            bedtoolspath:str="bedtools", macs3app:str="macs3", sortbedpath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", 
+            core:int=4, qvalue:float=0.05, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, broad=False, broad_cutoff:float=0.1, 
+            min_atac_count:int=None, min_gex_count:int=None, **kwargs):
+    gexstep3dir = os.path.join(gexoutdir, "step3")
+    gexname = f"{samplename}_E"
+    gexjson = os.path.join(gexoutdir, gexname+"_summary.json")
     atacname = f"{samplename}_A"
     step3dir = os.path.join(outdir, "step3")
     os.makedirs(step3dir, exist_ok=True)
@@ -91,7 +101,7 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
 
     qc["Sequencing"]["Sequenced read pairs"] = int(atac_summary["stat"]["total"])
     qc["Sequencing"]["Valid barcodes"] = atac_summary["stat"]["valid"]/atac_summary["stat"]["total"]
-    qc["Sequencing"]["Too short"] = atac_summary["stat"]["valid"] - atac_summary["stat"]["step1_available"]
+    qc["Sequencing"]["Too short"] = atac_summary["stat"]["too_short"]
     b_total_base = sum([sum(v) for v in atac_summary["barcode_q"].values()])
     b30_base = sum([sum(v[30:]) for v in atac_summary["barcode_q"].values()])
     qc["Sequencing"]["Q30 bases in barcode"] = b30_base/b_total_base
@@ -122,19 +132,6 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
 
     logger.info("make Anndata obj end!")
 
-
-    # plot fragments size fenbu
-    logger.info("plot fragments size started!")
-    snap.pl.frag_size_distr(atac, out_file=os.path.join(step3dir, atacname+"_fragments_size.png"))
-    # fragments size fenbu data to json
-    frag_size_list = list(range(1001))
-    frag_count_list = list(atac.uns['frag_size_distr'])
-    qc["insert"]["size"] = frag_size_list
-    qc["insert"]["count"] = frag_count_list
-
-    logger.info("plot fragments size end!")
-
-
     # TSS
     logger.info("plot TSS score started!")
     snap.metrics.tsse(atac, gene_anno=gtf)
@@ -142,10 +139,7 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     min_value = min(list(atac.uns['TSS_profile'])[999:3000])
     listtss=list(atac.uns['TSS_profile'])[999:3000]
     listtssbz = [x / min_value for x in listtss]
-    plt.plot(range(-1000, 1001), listtssbz)
-    plt.xlabel('Relative Position (bp from TSS)')
-    plt.ylabel('Relative Enrichment')
-    plt.savefig(os.path.join(step3dir, atacname+"_tss_enrichment.png"))
+
     # TSS score fenbu data to json
     tss_position_list = list(range(-1000,1001))
     tss_score_list = listtssbz
@@ -158,9 +152,28 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     # call peak
     logger.info("call peak started!")
     genomelen=atac.uns['reference_sequences']['reference_seq_length'].sum()
-    logger.info(f'Parameter : qvalue={qvalue}, nolambda={nolambda}, shift={snapshift}, extsize={extsize}, min_len={min_len}, n_jobs={core}')
-
-    snap.tl.macs3(atac, qvalue=qvalue, nolambda=nolambda, shift=snapshift, extsize=extsize, min_len=min_len, blacklist=None, n_jobs=core)
+    fragments_bedgz = os.path.join(step3dir, atacname+"_fragments.bed.gz")
+    fragments_bed = os.path.join(step3dir, atacname+"_fragments.bed")
+    cmd = ("cp {fragments_file} {fragments_bedgz}; {gunzippath} {fragments_bedgz}"
+        ).format(fragments_file=fragments_file, fragments_bedgz=fragments_bedgz, gunzippath=gunzippath)
+    run(cmd, shell=True)
+    logger.info(f'Parameter : qvalue={qvalue}, nolambda={nolambda}, shift={snapshift}, extsize={extsize}, min_len={min_len}, call_broad_peaks={broad}, broad_cutoff={broad_cutoff}, n_jobs={core}')
+    if broad:
+        cmd = ("{macs3app} callpeak -t {fragments_bed} -f BED -g {genomelen} --broad -n {atacname} --outdir {step3dir} -q {qvalue} --broad-cutoff {broad_cutoff} --shift {snapshift} --extsize {extsize} --min-length {min_len} --nomodel"
+            ).format(macs3app=macs3app, fragments_bed=fragments_bed, genomelen=genomelen, atacname=atacname, step3dir=step3dir, qvalue=qvalue, broad_cutoff=broad_cutoff, snapshift=snapshift, extsize=extsize, min_len=min_len)
+        run(cmd, shell=True)
+        broad_peaks_file = os.path.join(step3dir, atacname+"_peaks.broadPeak")
+        broad_peaks_df = pd.read_csv(
+            broad_peaks_file, 
+            sep='\t', 
+            header=None, 
+            names=['chrom', 'start', 'end', 'name', 'score', 'strand', 'fold_change', 'pvalue', 'qvalue'])
+        atac.uns['macs3_pseudobulk'] = broad_peaks_df
+        os.remove(broad_peaks_file)
+        gapped_peaks_file = os.path.join(step3dir, atacname+"_peaks.gappedPeak")
+        os.remove(gapped_peaks_file)
+    else:
+        snap.tl.macs3(atac, qvalue=qvalue, nolambda=nolambda, shift=snapshift, extsize=extsize, min_len=min_len, blacklist=None, n_jobs=core)
     logger.info(f'Call Peak Done !!!')
     peakfile=os.path.join(step3dir, atacname+"_rawpeaks.bed")
     peakuniq=os.path.join(step3dir, atacname+"_peaks.bed")
@@ -171,8 +184,8 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
             end = row['end']
             fhout.write(f'{chrom}\t{start}\t{end}\n')
     # quchong
-    cmd = ("{bedtoolspath} --max-mem 1G --unique {peakfile} > {peakuniq} && rm {peakfile}"
-        ).format(bedtoolspath=bedtoolspath, peakfile=peakfile, peakuniq=peakuniq)
+    cmd = ("{sortbedpath} --max-mem 1G --unique {peakfile} > {peakuniq} && rm {peakfile}"
+        ).format(sortbedpath=sortbedpath, peakfile=peakfile, peakuniq=peakuniq)
     run(cmd, shell=True)
     # count peaks
     peakuniqlen = 0
@@ -188,10 +201,10 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
             end = int(tmp[2])
             peakuniqlen += end - start
             peaks.append(f'{chrom}:{start}-{end}')
-
+    genome_in_peaks = peakuniqlen/genomelen
     logger.info(f'snapatac2 call peaks number: {peaknum}')
     logger.info(f'snapatac2 call peaks length: {peakuniqlen}')
-    logger.info(f'snapatac2 call peaks fraction: {peakuniqlen/genomelen:.2%}')
+    logger.info(f'snapatac2 call peaks fraction: {genome_in_peaks:.2%}')
 
     logger.info("call peak end!")
 
@@ -206,7 +219,7 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     # raw_peak_mat.write(os.path.join(step3dir, "raw_peaks_bc_matrix.h5ad"))
     # output raw_peaks_bc_matrix dir
     os.makedirs(os.path.join(step3dir, "raw_peaks_bc_matrix"), exist_ok=True)
-    scipy.io.mmwrite(os.path.join(step3dir, "raw_peaks_bc_matrix/matrix.mtx"), raw_peak_mat.X.T.astype(np.float32))
+    scipy.io.mmwrite(os.path.join(step3dir, "raw_peaks_bc_matrix/matrix.mtx"), raw_peak_mat.X.T.astype(np.int32))
     with open(os.path.join(step3dir, "raw_peaks_bc_matrix/matrix.mtx"), 'rb') as f_in:
         with gzip.open(os.path.join(step3dir, "raw_peaks_bc_matrix/matrix.mtx.gz"), 'wb') as f_out:
             f_out.writelines(f_in)
@@ -242,28 +255,36 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     # atac reads per barcode
     logger.info("read atac step3 fragments.tsv.gz ...")
     d = {}
-    with gzip.open(fragments_file, 'rt') as fh, open(os.path.join(step3dir, "frag_counts.xls"), 'w') as fhout:
-        fhout.write(f'barcode\tfragment\tnum\treads\n')
+    d_insert = {}
+    with gzip.open(fragments_file, 'rt') as fh:
+        # fhout.write(f'barcode\tfragment\tnum\treads\n')
         for row in fh:
             tmp = row.strip().split('\t')
             cb = tmp[3]
             fragment = f'{tmp[0]}_{tmp[1]}-{tmp[2]}'
+            insertsize = int(tmp[2]) - int(tmp[1])
+            if insertsize <= 1000:
+                d_insert[cb] = d_insert.get(cb, {})
+                d_insert[cb][str(insertsize)] = d_insert[cb].get(str(insertsize), 0)
+                d_insert[cb][str(insertsize)] += 1
             readsnum = tmp[4]
             d[cb] = d.get(cb, {'fragments_num':0, 'atac_reads':0})
             d[cb]['fragments_num'] += 1
             d[cb]['atac_reads'] += int(readsnum)
-            fhout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
+            # fhout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
     atac_reads_df = pd.DataFrame.from_dict(d, orient='index')
     atac_reads_df.reset_index(inplace=True)
     atac_reads_df.rename(columns={'index': 'barcode'}, inplace=True)
     merged_df = pd.merge(merged_df, atac_reads_df, on='barcode', how='inner')
     merged_df['fraction_frag_overlap_peak'] = merged_df['n_frag_overlap_peak'] / merged_df['fragments_num']
+    
     logger.info("count atac fragments and reads completed.")
 
 
     # ---------------gex gene UMI and reads per barcode---------------
     logger.info("read gex step3 counts.xls...")
     d = {}
+    countxls = os.path.join(gexstep3dir, "counts.xls")
     with open(countxls,"rt") as gex_file:
         for line in gex_file:
             if line.startswith("cellID"): continue
@@ -296,27 +317,95 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     logger.info("count metrics per barcode end!")
 
     # ---------------filter gex cell barcode---------------
-    logger.info("joint cell barcode started!")
-    joint_cb_list = []
-    with gzip.open(filtercb, 'rt') as fh:
-        for row in fh:
-            joint_cb_list.append(row.strip())
-    joint_cb_list=list(set(atac.obs_names).intersection(set(joint_cb_list)))
-    merged_df['is_cell'] = merged_df['barcode'].isin(joint_cb_list).astype(int)
+    logger.info("joint cell barcode start...")
+
+    if min_atac_count is not None and min_gex_count is not None:
+        logger.info("Call cells through min_atac_comunt and min_gex_comunt ...")
+        logger.info(f"min_atac_comunt : {int(min_atac_count)}")
+        logger.info(f"min_gex_comunt : {int(min_gex_count)}")
+        joint_df_cell = merged_df[(merged_df['gex_umi'] >= int(min_gex_count)) & (merged_df['events_overlap_peak'] >= int(min_atac_count))]
+        joint_cb_list = list(joint_df_cell['barcode'])
+
+    else:
+        df_filter3 = merged_df[(merged_df['gex_umi'] > 1) & (merged_df['events_overlap_peak'] > 1)]
+        df_filter1 = df_filter3[df_filter3['fraction_frag_overlap_peak'] > genome_in_peaks]
+        joint_df = df_filter1[['barcode', 'gex_umi', 'events_overlap_peak']]
+        joint_df_unique = joint_df.drop_duplicates(subset=['gex_umi', 'events_overlap_peak'])
+        points = log_transform(joint_df_unique[['gex_umi', 'events_overlap_peak']].values)
+
+        kmeans = KMeans(n_clusters=2, init='k-means++', n_init=10, max_iter=300)
+        kmeans.fit(points)
+        labels = kmeans.labels_
+        centroids = kmeans.cluster_centers_
+        if centroids[0].mean() > centroids[1].mean():
+            cell_label = 0
+            nocell_label = 1
+        else:
+            cell_label = 1
+            nocell_label = 0
+        logger.info(f"cell_label : {cell_label}")
+        joint_df_unique['kmeans_labels'] = labels
+        joint_df_unique['is_cell'] = (joint_df_unique['kmeans_labels'] == cell_label).astype(int)
+        joint_df_uniquecell = joint_df_unique[joint_df_unique['is_cell'] == 1]
+        joint_cb_list = list(joint_df_uniquecell['barcode'])
+
+    merged_df['is_cell'] = np.where(merged_df['barcode'].isin(joint_cb_list), 1, 0)
+    merged_df.drop('n_fragment', axis=1, inplace=True)
     merged_df.to_csv(os.path.join(step3dir, "per_barcode_metrics.csv"), index=False)
     cell_merged_df = merged_df[merged_df['is_cell'] == 1]
 
     logger.info("joint cell barcode end!")
 
 
-    # ---------------output filter matrix---------------
+    # plot fragments size fenbu
+    logger.info("count fragments size start...")
+    max_insert = 1000
+    joint_cb_list_set = set(joint_cb_list)
+    insert_counts = {str(i): 0 for i in range(max_insert + 1)}
+    for barcode, insert_dict in d_insert.items():
+        if barcode in joint_cb_list_set:
+            for insert_len, count in insert_dict.items():
+                insert_counts[insert_len] += count
+    insert_size_list = [i for i in range(max_insert + 1)]
+    insert_counts_list = list(insert_counts.values())
+    # fragments size fenbu data to json
+    qc["insert"]["size"] = insert_size_list
+    qc["insert"]["count"] = insert_counts_list
+
+    logger.info("count fragments size end!")
+    
+
+    # ---------------output filtered_peaks_bc_matrix dir---------------
+    logger.info("output filtered_feature_bc_matrix start...")
+    gex_adata = sc.read_10x_mtx(os.path.join(gexstep3dir, "raw_feature_bc_matrix"), var_names='gene_ids')
+
+    gex_cell_adata = gex_adata[joint_cb_list, :]
+    dict_idgene = gex_cell_adata.var['gene_symbols'].to_dict()
+    os.makedirs(os.path.join(gexstep3dir, "filtered_feature_bc_matrix"), exist_ok=True)
+
+    scipy.io.mmwrite(os.path.join(gexstep3dir, "filtered_feature_bc_matrix/matrix.mtx"), gex_cell_adata.X.T.astype(np.int32))
+    with open(os.path.join(gexstep3dir, "filtered_feature_bc_matrix/matrix.mtx"), 'rb') as f_in:
+        with gzip.open(os.path.join(gexstep3dir, "filtered_feature_bc_matrix/matrix.mtx.gz"), 'wb') as f_out:
+            f_out.writelines(f_in)
+    with gzip.open(os.path.join(gexstep3dir, "filtered_feature_bc_matrix/features.tsv.gz"), 'wt') as f:
+        for feature in gex_cell_adata.var_names:
+            f.write(f"{feature}\t{dict_idgene[feature]}\tGene Expression\n")
+    with gzip.open(os.path.join(gexstep3dir, "filtered_feature_bc_matrix/barcodes.tsv.gz"), 'wt') as f:
+        for cellbarcode in gex_cell_adata.obs_names:
+            f.write(f"{cellbarcode}\n")
+    os.remove(os.path.join(gexstep3dir, "filtered_feature_bc_matrix/matrix.mtx"))
+    logger.info("output filtered_feature_bc_matrix done!")
+
+
+    # ---------------output filtered_peaks_bc_matrix---------------
+    logger.info("output filtered_peaks_bc_matrix start...")
     filter_atac = atac[joint_cb_list, :]
     filter_atac.write(os.path.join(step3dir, atacname+"_snapatac2_filter.h5ad"))
     filter_peak_mat = snap.pp.make_peak_matrix(filter_atac, use_rep=peaks, counting_strategy='insertion')
 
     # output filtered_peaks_bc_matrix dir
     os.makedirs(os.path.join(step3dir, "filtered_peaks_bc_matrix"), exist_ok=True)
-    scipy.io.mmwrite(os.path.join(step3dir, "filtered_peaks_bc_matrix/matrix.mtx"), filter_peak_mat.X.T.astype(np.float32))
+    scipy.io.mmwrite(os.path.join(step3dir, "filtered_peaks_bc_matrix/matrix.mtx"), filter_peak_mat.X.T.astype(np.int32))
     with open(os.path.join(step3dir, "filtered_peaks_bc_matrix/matrix.mtx"), 'rb') as f_in:
         with gzip.open(os.path.join(step3dir, "filtered_peaks_bc_matrix/matrix.mtx.gz"), 'wb') as f_out:
             f_out.writelines(f_in)
@@ -331,7 +420,7 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     logger.info("output filtered_peaks_bc_matrix done!")
 
 
-    # ---------------cell count---------------
+    # ---------------atac cell count---------------
     logger.info("cell atac metrics count...")
 
     n_cells = len(joint_cb_list)
@@ -346,8 +435,9 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     qc["Cells"]["Fraction of high-quality fragments in cells"] = cell_merged_df['fragments_num'].sum()/merged_df['fragments_num'].sum()
     qc["Cells"]["Fraction of transposition events in peaks in cells"] = cell_merged_df['events_overlap_peak'].sum() / cell_merged_df['events_all'].sum()
     qc["Cells"]["Median high-quality fragments per cell"] = int(cell_merged_df['fragments_num'].median())
+    qc["Cells"]["Median high-quality fragments in peaks per cell"] = int(cell_merged_df['n_frag_overlap_peak'].median())
 
-    # ---------------Targeting Count---------------
+    # ---------------atac Targeting Count---------------
     logger.info(f"Number of peaks : {len(peaks)}")
     logger.info(f"Fraction of genome in peaks : {peakuniqlen/genomelen}")
     logger.info(f"TSS enrichment score : {max_value/min_value}")
@@ -363,24 +453,72 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     logger.info("cell atac metrics count done!")
 
 
-    # ---------------count medain fragments--------------- 
+    # ---------------gex downsample---------------------------
+    logger.info("gex calculate metrics start...")
+    summary_tmp, downsample = countUtil.calculate_metrics(
+        counts_file = os.path.join(gexstep3dir, "counts.xls"),
+        detail_file = os.path.join(gexstep3dir, "detail.xls"),
+        filterd_barcodes_file = os.path.join(gexstep3dir, "filtered_feature_bc_matrix/barcodes.tsv.gz"),
+        filterd_features_file = os.path.join(gexstep3dir, "filtered_feature_bc_matrix/features.tsv.gz"),
+        gtf = gtf,
+        basedir = gexstep3dir
+    )
+    with open(gexjson, "r") as fh:
+        summary = json.load(fh)
+        Total = summary["stat"]["total"]
+    with open(gexjson, "w") as fh:
+        estimated_cell_num = summary_tmp["Estimated Number of Cells"]
+        mean_reads_per_cell = Total / estimated_cell_num
+        summary_tmp["Mean Reads per Cell"] = int(mean_reads_per_cell)
+        del summary_tmp["Median lnc Genes per Cell"]
+        summary["cells"] = summary_tmp
+        downsample["Reads"] = [
+            int(summary_tmp["Mean Reads per Cell"] * p)
+            for p in downsample["percentage"]
+        ]
+        summary["downsample"] = downsample
+        json.dump(
+            summary,
+            fh,
+            indent=4,
+            default=lambda o: int(o) if isinstance(o, np.int64) else o
+        )
+
+    logger.info("gex calculate metrics done!")
+
+
+    # ---------------atac count medain fragments--------------- 
+    fragments_inpeakbed = os.path.join(step3dir, atacname+"_fragments_inPeaks.bed")
+    fragments_inpeak_uniq = os.path.join(step3dir, atacname+"_fragments_inPeaks_uniq.bed")
+    cmd = ("{bedtoolspath} intersect -a {fragments_bed} -b {peakuniq} -wa > {fragments_inpeakbed}; "
+           "{sortbedpath} --max-mem 4G --unique {fragments_inpeakbed} > {fragments_inpeak_uniq}"
+        ).format(bedtoolspath=bedtoolspath, fragments_bed=fragments_bed, peakuniq=peakuniq, fragments_inpeakbed=fragments_inpeakbed, sortbedpath=sortbedpath, fragments_inpeak_uniq=fragments_inpeak_uniq)
+    run(cmd, shell=True)
+    with open(fragments_inpeak_uniq, 'rt') as fh, open(os.path.join(step3dir, "frag_counts.xls"), 'w') as fhout:
+        fhout.write(f'barcode\tfragment\tnum\treads\n')
+        for row in fh:
+            tmp = row.strip().split('\t')
+            cb = tmp[3]
+            fragment = f'{tmp[0]}_{tmp[1]}-{tmp[2]}'
+            readsnum = tmp[4]
+            fhout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
+
     logger.info("count medain fragments started!")
     chunck_size = calulate_chunck_size(os.path.join(step3dir, "frag_counts.xls"))
     csv_reader = pd.read_csv(os.path.join(step3dir, "frag_counts.xls"),
                             dtype={
                                 "barcode": "category",
                                 "fragment": "category",
-                                "num": "category",
+                                "num": "int32",
                                 "reads": "int32"
                             },
                             sep="\t",
                             chunksize=chunck_size)
 
-    median_tmp = defaultdict(list)
-    cell_reads_total = 0
+    median_fragments_list = [0]
+
     for df in csv_reader:
         df = df.loc[df["barcode"].isin(joint_cb_list), :].reset_index(drop=True)
-        cell_reads_total += df["reads"].sum()
         rep = df["reads"]
         df = df.drop(["reads"], axis=1)
         idx = df.index.repeat(rep)
@@ -400,13 +538,8 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
                             .nunique() \
                             .reset_index(drop=True) \
                             .median()
-            median_tmp[percentage].append(int(median))
+            median_fragments_list.append(int(median))
 
-    median_fragments_list = [0]
-    for perc, medians in median_tmp.items():
-        median = int(sum(medians)/len(medians))
-        median_fragments_list.append(median)
-    median_fragments_list
     mean_reads_list = [0] + [int(qc["Sequencing"]["Sequenced read pairs"]/n_cells * float(p))for p in n_cols_key]
     percentage_list = ['0'] + [str((i+1)/ 10) for i in range(0,10)]
 
@@ -420,24 +553,35 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
 
     # ---------------joint call cell scatter plot, deduplication and density downsampling---------------
     logger.info("downsample started!")
-    joint_df = merged_df[['events_overlap_peak', 'gex_umi', 'is_cell']]
+    joint_df = merged_df[['barcode', 'events_overlap_peak', 'gex_umi', 'is_cell']]
     joint_df_unique = joint_df.drop_duplicates(subset=['events_overlap_peak', 'gex_umi'])
-    joint_df_sorted = joint_df_unique.sort_values(by='events_overlap_peak')
-    x_max = joint_df_sorted['events_overlap_peak'].max()
-    bins = np.linspace(0, x_max, num=21)
+
+    cell_merged_df = joint_df_unique[joint_df_unique['is_cell'] == 1]
+    if len(cell_merged_df['barcode']) <= 4000:
+        cell_merged_df_4000 = cell_merged_df
+    else:
+        cell_merged_df_4000 = cell_merged_df.sample(n=4000, random_state=42)
+        
+    nocell_merged_df = joint_df_unique[joint_df_unique['is_cell'] == 0]
+    nocell_merged_df_sorted = nocell_merged_df.sort_values(by='events_overlap_peak')
+    x_max = nocell_merged_df_sorted['events_overlap_peak'].max()
+    log_x_max = np.log10(x_max)
+    logbins = np.linspace(0, log_x_max, num=21)
+    bins = [10 ** v for v in logbins]
 
     sampled_points = []
 
     for i in range(len(bins) - 1):
-        bin_data = joint_df_sorted[(joint_df_sorted['events_overlap_peak'] > bins[i]) & (joint_df_sorted['events_overlap_peak'] <= bins[i + 1])]
-        chuqu = int((len(bin_data) / len(joint_df_unique))*2000)
-        if len(bin_data) > 50:
+        bin_data = nocell_merged_df_sorted[(nocell_merged_df_sorted['events_overlap_peak'] >= bins[i]) & (nocell_merged_df_sorted['events_overlap_peak'] < bins[i + 1])]
+        chuqu = int((len(bin_data) / len(nocell_merged_df))*2000)
+        if len(bin_data) > 100:
             sampled = bin_data.sample(n=chuqu, random_state=42)
         else:
             sampled = bin_data       
         sampled_points.append(sampled)
 
-    final_joint_df = pd.concat(sampled_points)
+    nocell_merged_df2000 = pd.concat(sampled_points)
+    final_joint_df = pd.concat([cell_merged_df_4000, nocell_merged_df2000], ignore_index=True)
     cell_umi = final_joint_df.loc[final_joint_df['is_cell'] == 1, 'gex_umi'].tolist()
     cell_events = final_joint_df.loc[final_joint_df['is_cell'] == 1, 'events_overlap_peak'].tolist()
     nocell_umi = final_joint_df.loc[final_joint_df['is_cell'] == 0, 'gex_umi'].tolist()
@@ -451,21 +595,9 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
 
 
     # ---------------Fragments scatter plot, deduplication and density downsampling---------------
-    frag_df = merged_df[['fragments_num', 'fraction_frag_overlap_peak', 'is_cell']]
-    frag_df_unique = frag_df.drop_duplicates(subset=['fragments_num', 'fraction_frag_overlap_peak'])
-    frag_df_sorted = frag_df_unique.sort_values(by='fragments_num')
-    x_max = frag_df_sorted['fragments_num'].max()
-    bins = np.linspace(0, x_max, num=21)
-    sampled_points = []
-    for i in range(len(bins) - 1):
-        bin_data = frag_df_sorted[(frag_df_sorted['fragments_num'] > bins[i]) & (frag_df_sorted['fragments_num'] <= bins[i + 1])]
-        chuqu = int((len(bin_data) / len(frag_df_unique))*2000)
-        if len(bin_data) > 50:
-            sampled = bin_data.sample(n=chuqu, random_state=42)
-        else:
-            sampled = bin_data       
-        sampled_points.append(sampled)
-    final_frag_df = pd.concat(sampled_points)
+    frag_df = merged_df[['barcode', 'fragments_num', 'fraction_frag_overlap_peak', 'is_cell']]
+    final_frag_df = frag_df[frag_df['barcode'].isin(final_joint_df['barcode'])]
+    
     cell_fragments = final_frag_df.loc[final_frag_df['is_cell'] == 1, 'fragments_num'].tolist()
     cell_frac = final_frag_df.loc[final_frag_df['is_cell'] == 1, 'fraction_frag_overlap_peak'].tolist()
     nocell_fragments = final_frag_df.loc[final_frag_df['is_cell'] == 0, 'fragments_num'].tolist()
@@ -492,11 +624,15 @@ def runpipe(bam:str, outdir:str, samplename:str, filtercb:str, countxls:str, org
     memory = int(available_memory * 0.9)
     cmd = ("cd {step3dir}; "
            "{gunzippath} {atacname}_fragments.tsv.gz; "
-           "{bedtoolspath} --max-mem {memory}G {atacname}_fragments.tsv > {atacname}_fragments_sort.tsv; "
+           "{sortbedpath} --max-mem {memory}G {atacname}_fragments.tsv > {atacname}_fragments_sort.tsv; "
            "{bgzippath} -c {atacname}_fragments_sort.tsv > {atacname}_fragments.tsv.gz; "
            "{tabixpath} -p bed {atacname}_fragments.tsv.gz && rm {atacname}_fragments.tsv {atacname}_fragments_sort.tsv {atacname}_raw_fragments.tsv.gz"
-        ).format(step3dir=step3dir, atacname=atacname, memory=memory, gunzippath=gunzippath, bedtoolspath=bedtoolspath, bgzippath=bgzippath, tabixpath=tabixpath)
+        ).format(step3dir=step3dir, atacname=atacname, memory=memory, gunzippath=gunzippath, sortbedpath=sortbedpath, bgzippath=bgzippath, tabixpath=tabixpath)
     run(cmd, shell=True)
+
+    os.remove(fragments_bed)
+    os.remove(fragments_inpeakbed)
+    os.remove(fragments_inpeak_uniq)
 
     logger.info("sort fragments & creat index end!")
 
