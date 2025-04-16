@@ -394,7 +394,7 @@
                 {
                     "id": 4,
                     "name": "PlotlyLine",
-                    "title": "Median Unique Fragments per Cell",
+                    "title": "Median Unique Fragments Overlapping Peaks per Cell",
                     "data": {
                         "x": [],
                         "y": [],
@@ -402,10 +402,10 @@
                             "title": "Mean Read Pairs per Cell"
                         },
                         "yaxis": {
-                            "title": "Median Unique Fragments per Cell"
+                            "title": "Median Unique Fragments Overlapping Peaks per Cell"
                         }
                     },
-                    "description": "Performing downsample processing on the data, with Mean Read Pairs per Cell on the x-axis and Median Unique Fragments per Cell on the y-axis"
+                    "description": "Performing downsample processing on the data, with Mean Read Pairs per Cell on the x-axis and Median Unique Fragments Overlapping Peaks per Cell on the y-axis"
                 }
             ]
         },

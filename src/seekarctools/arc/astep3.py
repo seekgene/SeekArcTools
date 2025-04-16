@@ -55,19 +55,22 @@ def log_transform(x, alpha=0.1):
 def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, refpath:str, 
             bedtoolspath:str="bedtools", macs3app:str="macs3", sortbedpath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", 
             core:int=4, qvalue:float=0.05, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, broad=False, broad_cutoff:float=0.1, 
-            min_atac_count:int=None, min_gex_count:int=None, **kwargs):
+            min_atac_count:int=None, min_gex_count:int=None, retry=False, **kwargs):
     gexstep3dir = os.path.join(gexoutdir, "step3")
     gexname = f"{samplename}_E"
     gexjson = os.path.join(gexoutdir, gexname+"_summary.json")
     atacname = f"{samplename}_A"
     step3dir = os.path.join(outdir, "step3")
     os.makedirs(step3dir, exist_ok=True)
-    check_fragments(step3dir, atacname)
 
     chrNameLength = os.path.join(refpath, "star", 'chrNameLength.txt')
     assert os.path.exists(chrNameLength), f'{chrNameLength} not found!'
     gtf = os.path.join(refpath, "genes", "genes.gtf")
     assert os.path.exists(gtf), f'{gtf} not found!'
+
+    atacjson = os.path.join(outdir, atacname+"_summary.json")
+    with open(atacjson, "r") as fh:
+        atac_summary = json.load(fh)
 
     qc = {
         "Sequencing": {},
@@ -82,55 +85,128 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
     }
     qc["refpath"] = refpath
     qc["Organism"] = organism
+    if retry:
+        size_dict, size_list = makedict(chrNameLength)
+        qc["Sequencing"] = atac_summary["atac"]["Sequencing"]
+        qc["Mapping"] = atac_summary["atac"]["Mapping"]
+        logger.info(f'Sequencing QC : {qc["Sequencing"]}')
+        logger.info(f'Mapping QC : {qc["Mapping"]}')
 
-    # make fragments and QC
-    logger.info("make fragments and QC started!")
-    raw_fragments_file = os.path.join(step3dir, atacname+"_raw_fragments.tsv.gz")
-    bam_qc = snap.pp.make_fragment_file(
-        bam_file=bam,
-        output_file=raw_fragments_file,
-        barcode_regex = "^(.*?)_",
-        compression = 'gzip',
-        compression_level = 6)
+        logger.info("make retry Anndata obj started!")
+        raw_snap_h5ad = os.path.join(step3dir, atacname+"_snapatac2_raw.h5ad")
+        assert os.path.exists(raw_snap_h5ad), f'{raw_snap_h5ad} not found!'
+        atac = sc.read_h5ad(raw_snap_h5ad)
+        logger.info("make retry Anndata obj end!")
+        # atac reads per barcode
+        logger.info("read atac step3 fragments.tsv.gz ...")
+        fragments_file = os.path.join(step3dir, atacname+"_fragments.tsv.gz")
+        d = {}
+        d_insert = {}
+        with gzip.open(fragments_file, 'rt') as fh:
+            for row in fh:
+                tmp = row.strip().split('\t')
+                cb = tmp[3]
+                fragment = f'{tmp[0]}_{tmp[1]}-{tmp[2]}'
+                insertsize = int(tmp[2]) - int(tmp[1])
+                if insertsize <= 1000:
+                    d_insert[cb] = d_insert.get(cb, {})
+                    d_insert[cb][str(insertsize)] = d_insert[cb].get(str(insertsize), 0)
+                    d_insert[cb][str(insertsize)] += 1
+                readsnum = tmp[4]
+                d[cb] = d.get(cb, {'fragments_num':0, 'atac_reads':0})
+                d[cb]['fragments_num'] += 1
+                d[cb]['atac_reads'] += int(readsnum)
+        atac_reads_df = pd.DataFrame.from_dict(d, orient='index')
+        atac_reads_df.reset_index(inplace=True)
+        atac_reads_df.rename(columns={'index': 'barcode'}, inplace=True)
+    else:
+        # make fragments and QC
+        logger.info("make fragments and QC started!")
+        raw_fragments_file = os.path.join(step3dir, atacname+"_raw_fragments.tsv.gz")
+        bam_qc = snap.pp.make_fragment_file(
+            bam_file=bam,
+            output_file=raw_fragments_file,
+            barcode_regex = "^(.*?)_",
+            compression = 'gzip',
+            compression_level = 6)
+        logger.info("make fragments and QC end!")
 
-    logger.info("make fragments and QC end!")
+        qc["Sequencing"]["Sequenced read pairs"] = int(atac_summary["stat"]["total"])
+        qc["Sequencing"]["Valid barcodes"] = atac_summary["stat"]["valid"]/atac_summary["stat"]["total"]
+        qc["Sequencing"]["Too short"] = atac_summary["stat"]["too_short"]
+        b_total_base = sum([sum(v) for v in atac_summary["barcode_q"].values()])
+        b30_base = sum([sum(v[30:]) for v in atac_summary["barcode_q"].values()])
+        qc["Sequencing"]["Q30 bases in barcode"] = b30_base/b_total_base
+        qc["Sequencing"]["Q30 bases in read 1"] = bam_qc["frac_q30_bases_read1"]
+        qc["Sequencing"]["Q30 bases in read 2"] = bam_qc["frac_q30_bases_read2"]
+        qc["Sequencing"]["Percent duplicates"] = bam_qc["frac_duplicates"]
+        qc["Mapping"]["Confidently mapped read pairs"] = bam_qc["frac_confidently_mapped"]
+        qc["Mapping"]["Unmapped read pairs"] = bam_qc["frac_unmapped"]
+        qc["Mapping"]["Non-nuclear read pairs"] = bam_qc["frac_nonnuclear"]
 
-    atacjson = os.path.join(outdir, atacname+"_summary.json")
-    with open(atacjson, "r") as fh:
-        atac_summary = json.load(fh)
+        logger.info(f'Sequencing QC : {qc["Sequencing"]}')
+        logger.info(f'Mapping QC : {qc["Mapping"]}')
 
-    qc["Sequencing"]["Sequenced read pairs"] = int(atac_summary["stat"]["total"])
-    qc["Sequencing"]["Valid barcodes"] = atac_summary["stat"]["valid"]/atac_summary["stat"]["total"]
-    qc["Sequencing"]["Too short"] = atac_summary["stat"]["too_short"]
-    b_total_base = sum([sum(v) for v in atac_summary["barcode_q"].values()])
-    b30_base = sum([sum(v[30:]) for v in atac_summary["barcode_q"].values()])
-    qc["Sequencing"]["Q30 bases in barcode"] = b30_base/b_total_base
-    qc["Sequencing"]["Q30 bases in read 1"] = bam_qc["frac_q30_bases_read1"]
-    qc["Sequencing"]["Q30 bases in read 2"] = bam_qc["frac_q30_bases_read2"]
-    qc["Sequencing"]["Percent duplicates"] = bam_qc["frac_duplicates"]
-    qc["Mapping"]["Confidently mapped read pairs"] = bam_qc["frac_confidently_mapped"]
-    qc["Mapping"]["Unmapped read pairs"] = bam_qc["frac_unmapped"]
-    qc["Mapping"]["Non-nuclear read pairs"] = bam_qc["frac_nonnuclear"]
+        logger.info("dedup raw fragments file & del chrM & count started!")
+        fragments_file = os.path.join(step3dir, atacname+"_fragments.tsv.gz")
+        d = {}
+        d_insert = {}
+        with gzip.open(raw_fragments_file, 'rt') as fh, gzip.open(fragments_file, "wt") as fhout:
+            prev_key = None
+            total_reads = 0
+            for line in fh:
+                fields = line.strip().split("\t")
+                chrom, start, end, barcode, reads_count = fields
+                if chrom in ['chrM','M']:
+                    continue
+                key = (chrom, start, end, barcode)            
+                if key == prev_key:
+                    total_reads += int(reads_count)
+                else:
+                    if prev_key is not None:
+                        chrom_prev, start_prev, end_prev, barcode_prev = prev_key
+                        fhout.write(f"{chrom_prev}\t{start_prev}\t{end_prev}\t{barcode_prev}\t{total_reads}\n")
+                        cb = barcode_prev
+                        fragment = f'{chrom_prev}_{start_prev}-{end_prev}'
+                        insertsize = int(end_prev) - int(start_prev)
+                        if insertsize <= 1000:
+                            d_insert[cb] = d_insert.get(cb, {})
+                            d_insert[cb][str(insertsize)] = d_insert[cb].get(str(insertsize), 0)
+                            d_insert[cb][str(insertsize)] += 1
+                        d[cb] = d.get(cb, {'fragments_num':0, 'atac_reads':0})
+                        d[cb]['fragments_num'] += 1
+                        d[cb]['atac_reads'] += int(total_reads)
+                    prev_key = key
+                    total_reads = int(reads_count)
+            
+            if prev_key is not None:
+                chrom_prev, start_prev, end_prev, barcode_prev = prev_key
+                fhout.write(f"{chrom_prev}\t{start_prev}\t{end_prev}\t{barcode_prev}\t{total_reads}\n")
+                cb = barcode_prev
+                fragment = f'{chrom_prev}_{start_prev}-{end_prev}'
+                insertsize = int(end_prev) - int(start_prev)
+                if insertsize <= 1000:
+                    d_insert[cb] = d_insert.get(cb, {})
+                    d_insert[cb][str(insertsize)] = d_insert[cb].get(str(insertsize), 0)
+                    d_insert[cb][str(insertsize)] += 1
+                d[cb] = d.get(cb, {'fragments_num':0, 'atac_reads':0})
+                d[cb]['fragments_num'] += 1
+                d[cb]['atac_reads'] += int(total_reads)
 
-    logger.info(f'Sequencing QC : {qc["Sequencing"]}')
-    logger.info(f'Mapping QC : {qc["Mapping"]}')
+        atac_reads_df = pd.DataFrame.from_dict(d, orient='index')
+        atac_reads_df.reset_index(inplace=True)
+        atac_reads_df.rename(columns={'index': 'barcode'}, inplace=True)
+        logger.info("dedup raw fragments file & del chrM & count end!")
 
-    fragments_file = os.path.join(step3dir, atacname+"_fragments.tsv.gz")
-    with gzip.open(raw_fragments_file, 'rt') as fh, gzip.open(fragments_file, "wt") as fhout:
-        for frag in fh:
-            chrname = frag.strip().split('\t')[0]
-            if chrname == 'chrM':
-                continue
-            fhout.write(frag)
 
-    # make Anndata obj
-    logger.info("make Anndata obj started!")
-    size_dict, size_list = makedict(chrNameLength)
-    atac = snap.pp.import_data(fragment_file=fragments_file, 
-                               chrom_sizes=size_dict,
-                               min_num_fragments=0)
-
-    logger.info("make Anndata obj end!")
+        # make Anndata obj
+        logger.info("make Anndata obj started!")
+        size_dict, size_list = makedict(chrNameLength)
+        atac = snap.pp.import_data(fragment_file=fragments_file, 
+                                chrom_sizes=size_dict,
+                                min_num_fragments=0)
+        atac.write(os.path.join(step3dir, atacname+"_snapatac2_raw.h5ad"))
+        logger.info("make Anndata obj end!")
 
     # TSS
     logger.info("plot TSS score started!")
@@ -209,14 +285,35 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
     logger.info("call peak end!")
 
 
+    fragments_inpeakbed = os.path.join(step3dir, atacname+"_fragments_inPeaks.bed")
+    fragments_inpeak_uniq = os.path.join(step3dir, atacname+"_fragments_inPeaks_uniq.bed")
+    cmd = ("{bedtoolspath} intersect -a {fragments_bed} -b {peakuniq} -wa > {fragments_inpeakbed}; "
+           "{sortbedpath} --max-mem 4G --unique {fragments_inpeakbed} > {fragments_inpeak_uniq}"
+        ).format(bedtoolspath=bedtoolspath, fragments_bed=fragments_bed, peakuniq=peakuniq, fragments_inpeakbed=fragments_inpeakbed, sortbedpath=sortbedpath, fragments_inpeak_uniq=fragments_inpeak_uniq)
+    run(cmd, shell=True)
+
+    dtmp1 = {}
+    with open(fragments_inpeak_uniq, 'rt') as fh, open(os.path.join(step3dir, "frag_counts.xls"), 'w') as fhout:
+        fhout.write(f'barcode\tfragment\tnum\treads\n')
+        for row in fh:
+            tmp = row.strip().split('\t')
+            cb = tmp[3]
+            dtmp1[cb] = dtmp1.get(cb, 0)
+            dtmp1[cb] += 1
+            fragment = f'{tmp[0]}_{tmp[1]}-{tmp[2]}'
+            readsnum = tmp[4]
+            fhout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
+
+    dftmp1 = pd.DataFrame(list(dtmp1.items()), columns=["barcode", "fragments_num_overlap_peaks"])
+
+
     # ---------------count metrics per barcode---------------
     logger.info("count metrics per barcode started!")
     snapatac2.metrics.frip(atac, {"n_frag_overlap_peak": peaks}, normalized=False)
     snapatac2.metrics.frip(atac, {"events_overlap_peak": peaks}, normalized=False, count_as_insertion=True, inplace=True)
     snapatac2.metrics.frip(atac, {"events_all": size_list}, normalized=False, count_as_insertion=True, inplace=True)
-    atac.write(os.path.join(step3dir, atacname+"_snapatac2_raw.h5ad"))
+
     raw_peak_mat = snap.pp.make_peak_matrix(atac, use_rep=peaks, counting_strategy='insertion')
-    # raw_peak_mat.write(os.path.join(step3dir, "raw_peaks_bc_matrix.h5ad"))
     # output raw_peaks_bc_matrix dir
     os.makedirs(os.path.join(step3dir, "raw_peaks_bc_matrix"), exist_ok=True)
     scipy.io.mmwrite(os.path.join(step3dir, "raw_peaks_bc_matrix/matrix.mtx"), raw_peak_mat.X.T.astype(np.int32))
@@ -252,31 +349,10 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
     events_all_df['barcode'] = atac.obs.index
     merged_df = pd.merge(merged_df, events_all_df, on='barcode', how='inner')
 
-    # atac reads per barcode
-    logger.info("read atac step3 fragments.tsv.gz ...")
-    d = {}
-    d_insert = {}
-    with gzip.open(fragments_file, 'rt') as fh:
-        # fhout.write(f'barcode\tfragment\tnum\treads\n')
-        for row in fh:
-            tmp = row.strip().split('\t')
-            cb = tmp[3]
-            fragment = f'{tmp[0]}_{tmp[1]}-{tmp[2]}'
-            insertsize = int(tmp[2]) - int(tmp[1])
-            if insertsize <= 1000:
-                d_insert[cb] = d_insert.get(cb, {})
-                d_insert[cb][str(insertsize)] = d_insert[cb].get(str(insertsize), 0)
-                d_insert[cb][str(insertsize)] += 1
-            readsnum = tmp[4]
-            d[cb] = d.get(cb, {'fragments_num':0, 'atac_reads':0})
-            d[cb]['fragments_num'] += 1
-            d[cb]['atac_reads'] += int(readsnum)
-            # fhout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
-    atac_reads_df = pd.DataFrame.from_dict(d, orient='index')
-    atac_reads_df.reset_index(inplace=True)
-    atac_reads_df.rename(columns={'index': 'barcode'}, inplace=True)
     merged_df = pd.merge(merged_df, atac_reads_df, on='barcode', how='inner')
-    merged_df['fraction_frag_overlap_peak'] = merged_df['n_frag_overlap_peak'] / merged_df['fragments_num']
+    merged_df = pd.merge(merged_df, dftmp1, on='barcode', how='left')
+    merged_df.fillna(0, inplace=True)
+    merged_df['fraction_frag_overlap_peak'] = merged_df['fragments_num_overlap_peaks'] / merged_df['fragments_num']
     
     logger.info("count atac fragments and reads completed.")
 
@@ -351,6 +427,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
 
     merged_df['is_cell'] = np.where(merged_df['barcode'].isin(joint_cb_list), 1, 0)
     merged_df.drop('n_fragment', axis=1, inplace=True)
+    merged_df.drop('n_frag_overlap_peak', axis=1, inplace=True)
     merged_df.to_csv(os.path.join(step3dir, "per_barcode_metrics.csv"), index=False)
     cell_merged_df = merged_df[merged_df['is_cell'] == 1]
 
@@ -400,7 +477,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
     # ---------------output filtered_peaks_bc_matrix---------------
     logger.info("output filtered_peaks_bc_matrix start...")
     filter_atac = atac[joint_cb_list, :]
-    filter_atac.write(os.path.join(step3dir, atacname+"_snapatac2_filter.h5ad"))
+    # filter_atac.write(os.path.join(step3dir, atacname+"_snapatac2_filter.h5ad"))
     filter_peak_mat = snap.pp.make_peak_matrix(filter_atac, use_rep=peaks, counting_strategy='insertion')
 
     # output filtered_peaks_bc_matrix dir
@@ -435,20 +512,20 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
     qc["Cells"]["Fraction of high-quality fragments in cells"] = cell_merged_df['fragments_num'].sum()/merged_df['fragments_num'].sum()
     qc["Cells"]["Fraction of transposition events in peaks in cells"] = cell_merged_df['events_overlap_peak'].sum() / cell_merged_df['events_all'].sum()
     qc["Cells"]["Median high-quality fragments per cell"] = int(cell_merged_df['fragments_num'].median())
-    qc["Cells"]["Median high-quality fragments in peaks per cell"] = int(cell_merged_df['n_frag_overlap_peak'].median())
+    qc["Cells"]["Median high-quality fragments in peaks per cell"] = int(cell_merged_df['fragments_num_overlap_peaks'].median())
 
     # ---------------atac Targeting Count---------------
     logger.info(f"Number of peaks : {len(peaks)}")
     logger.info(f"Fraction of genome in peaks : {peakuniqlen/genomelen}")
     logger.info(f"TSS enrichment score : {max_value/min_value}")
     logger.info(f"Fraction of high-quality fragments overlapping TSS : {atac.uns['frac_overlap_TSS']:.2%}")
-    logger.info(f"Fraction of high-quality fragments overlapping peaks : {cell_merged_df['n_frag_overlap_peak'].sum()/cell_merged_df['fragments_num'].sum():.2%}")
+    logger.info(f"Fraction of high-quality fragments overlapping peaks : {cell_merged_df['fragments_num_overlap_peaks'].sum()/cell_merged_df['fragments_num'].sum():.2%}")
 
     qc["Targeting"]["Number of peaks"] = len(peaks)
     qc["Targeting"]["Fraction of genome in peaks"] = peakuniqlen/genomelen
     qc["Targeting"]["TSS enrichment score"] = max_value/min_value
     qc["Targeting"]["Fraction of high-quality fragments overlapping TSS"] = atac.uns['frac_overlap_TSS']
-    qc["Targeting"]["Fraction of high-quality fragments overlapping peaks"] = cell_merged_df['n_frag_overlap_peak'].sum()/cell_merged_df['fragments_num'].sum()
+    qc["Targeting"]["Fraction of high-quality fragments overlapping peaks"] = cell_merged_df['fragments_num_overlap_peaks'].sum()/cell_merged_df['fragments_num'].sum()
 
     logger.info("cell atac metrics count done!")
 
@@ -486,23 +563,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
 
     logger.info("gex calculate metrics done!")
 
-
     # ---------------atac count medain fragments--------------- 
-    fragments_inpeakbed = os.path.join(step3dir, atacname+"_fragments_inPeaks.bed")
-    fragments_inpeak_uniq = os.path.join(step3dir, atacname+"_fragments_inPeaks_uniq.bed")
-    cmd = ("{bedtoolspath} intersect -a {fragments_bed} -b {peakuniq} -wa > {fragments_inpeakbed}; "
-           "{sortbedpath} --max-mem 4G --unique {fragments_inpeakbed} > {fragments_inpeak_uniq}"
-        ).format(bedtoolspath=bedtoolspath, fragments_bed=fragments_bed, peakuniq=peakuniq, fragments_inpeakbed=fragments_inpeakbed, sortbedpath=sortbedpath, fragments_inpeak_uniq=fragments_inpeak_uniq)
-    run(cmd, shell=True)
-    with open(fragments_inpeak_uniq, 'rt') as fh, open(os.path.join(step3dir, "frag_counts.xls"), 'w') as fhout:
-        fhout.write(f'barcode\tfragment\tnum\treads\n')
-        for row in fh:
-            tmp = row.strip().split('\t')
-            cb = tmp[3]
-            fragment = f'{tmp[0]}_{tmp[1]}-{tmp[2]}'
-            readsnum = tmp[4]
-            fhout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
-
     logger.info("count medain fragments started!")
     chunck_size = calulate_chunck_size(os.path.join(step3dir, "frag_counts.xls"))
     csv_reader = pd.read_csv(os.path.join(step3dir, "frag_counts.xls"),
@@ -515,8 +576,8 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
                             sep="\t",
                             chunksize=chunck_size)
 
-    median_fragments_list = [0]
-
+    median_tmp = defaultdict(list)
+    chunck_count = 0
     for df in csv_reader:
         df = df.loc[df["barcode"].isin(joint_cb_list), :].reset_index(drop=True)
         rep = df["reads"]
@@ -527,27 +588,56 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
         # shuffle
         df = df.sample(frac=1.0).reset_index(drop=True)
         # downsample
-        n_cols_key = [str((i+1)/ 10) for i in range(0,10)]
+        n_cols_key = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         for n, interval in enumerate(np.array_split(np.arange(df.shape[0]), 10)):
             idx = interval[-1]
-            percentage = n_cols_key[n]
+            percentage = str(n_cols_key[n])
             sampled_df = df.iloc[:idx]
             sampled_df = sampled_df.assign(**{percentage: 1})
-            # calculate median for each portion
             median = sampled_df.groupby([sampled_df["barcode"]],observed=True)["fragment"] \
                             .nunique() \
                             .reset_index(drop=True) \
                             .median()
-            median_fragments_list.append(int(median))
+            median_tmp[percentage].append(median)
+        chunck_count += 1
 
+    median_sampling = []
+    for perc, medians in median_tmp.items():
+        median = int(sum(medians))
+        median_sampling.append(median)
+
+    median_sampling.pop()
+    median_frag_overpeak = int(cell_merged_df['fragments_num_overlap_peaks'].median())
+    median_fragments_list = [0] + median_sampling + [median_frag_overpeak]
     mean_reads_list = [0] + [int(qc["Sequencing"]["Sequenced read pairs"]/n_cells * float(p))for p in n_cols_key]
-    percentage_list = ['0'] + [str((i+1)/ 10) for i in range(0,10)]
+    percentage_list = [0] + n_cols_key
 
+    # ---------------atac count medain fragments--------------- 
+    # logger.info("count medain fragments started!")
+    # newdf = pd.read_csv(os.path.join(step3dir, "frag_counts.xls"), sep="\t")
+    # newdf = newdf.loc[newdf["barcode"].isin(joint_cb_list), :].reset_index(drop=True)
+    # rep = newdf["reads"]
+    # newdf = newdf.drop(["reads"], axis=1)
+    # idx = newdf.index.repeat(rep)
+    # newdf = newdf.iloc[idx].reset_index(drop=True)
+    # n_cols_key = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    # newdf = newdf.sample(frac=1.0).reset_index(drop=True)
+    # median_list = []
+    # for n in n_cols_key:
+    #     logger.info(f"-------------n : {n}--------------------------")
+    #     sampled_df = newdf.sample(frac=n)
+    #     median = sampled_df.groupby([sampled_df["barcode"]],observed=True)["fragment"] \
+    #                     .nunique() \
+    #                     .reset_index(drop=True) \
+    #                     .median()
+    #     median_list.append(int(median))
+    # median_fragments_list = [0] + median_list
+    # mean_reads_list = [0] + [int(qc["Sequencing"]["Sequenced read pairs"]/n_cells * float(p))for p in n_cols_key]
+    # percentage_list = [0] + n_cols_key
 
     qc["median"]["percentage"] = percentage_list
     qc["median"]["mean_reads"] = mean_reads_list
     qc["median"]["median_fragments"] = median_fragments_list
-
     logger.info("count medain fragments end!")
 
 
@@ -575,9 +665,12 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
         bin_data = nocell_merged_df_sorted[(nocell_merged_df_sorted['events_overlap_peak'] >= bins[i]) & (nocell_merged_df_sorted['events_overlap_peak'] < bins[i + 1])]
         chuqu = int((len(bin_data) / len(nocell_merged_df))*2000)
         if len(bin_data) > 100:
-            sampled = bin_data.sample(n=chuqu, random_state=42)
+            if chuqu < len(bin_data):
+                sampled = bin_data.sample(n=chuqu, random_state=42)
+            else:
+                sampled = bin_data
         else:
-            sampled = bin_data       
+            sampled = bin_data   
         sampled_points.append(sampled)
 
     nocell_merged_df2000 = pd.concat(sampled_points)
@@ -618,21 +711,23 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
             default=lambda o: int(o) if isinstance(o, np.int64) else o
         )
 
-    # sort & index
-    logger.info("sort fragments & creat index started!")
-    available_memory = psutil.virtual_memory().available / (1024 * 1024 * 1024)
-    memory = int(available_memory * 0.9)
-    cmd = ("cd {step3dir}; "
-           "{gunzippath} {atacname}_fragments.tsv.gz; "
-           "{sortbedpath} --max-mem {memory}G {atacname}_fragments.tsv > {atacname}_fragments_sort.tsv; "
-           "{bgzippath} -c {atacname}_fragments_sort.tsv > {atacname}_fragments.tsv.gz; "
-           "{tabixpath} -p bed {atacname}_fragments.tsv.gz && rm {atacname}_fragments.tsv {atacname}_fragments_sort.tsv {atacname}_raw_fragments.tsv.gz"
-        ).format(step3dir=step3dir, atacname=atacname, memory=memory, gunzippath=gunzippath, sortbedpath=sortbedpath, bgzippath=bgzippath, tabixpath=tabixpath)
-    run(cmd, shell=True)
+    if retry:
+        logger.info("do not need sort fragments & creat index!")
+    else:
+        # sort & index
+        logger.info("sort fragments & creat index started!")
+        available_memory = psutil.virtual_memory().available / (1024 * 1024 * 1024)
+        memory = int(available_memory * 0.9)
+        cmd = ("cd {step3dir}; "
+            "{gunzippath} {atacname}_fragments.tsv.gz; "
+            "{sortbedpath} --max-mem {memory}G {atacname}_fragments.tsv > {atacname}_fragments_sort.tsv; "
+            "{bgzippath} -c {atacname}_fragments_sort.tsv > {atacname}_fragments.tsv.gz; "
+            "{tabixpath} -p bed {atacname}_fragments.tsv.gz && rm {atacname}_fragments.tsv {atacname}_fragments_sort.tsv {atacname}_raw_fragments.tsv.gz"
+            ).format(step3dir=step3dir, atacname=atacname, memory=memory, gunzippath=gunzippath, sortbedpath=sortbedpath, bgzippath=bgzippath, tabixpath=tabixpath)
+        run(cmd, shell=True)
+        logger.info("sort fragments & creat index end!")
 
     os.remove(fragments_bed)
     os.remove(fragments_inpeakbed)
     os.remove(fragments_inpeak_uniq)
-
-    logger.info("sort fragments & creat index end!")
 
