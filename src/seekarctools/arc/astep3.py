@@ -16,6 +16,7 @@ from ..utils.helper import logger
 from ..utils.wrappers import cmd_execute
 from ..utils import countUtil
 
+pd.options.mode.chained_assignment = None 
 
 def makedict(chrlenfile):
     d = {}
@@ -52,7 +53,7 @@ def log_transform(x, alpha=0.1):
     return np.log(x + alpha)
 
 
-def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, refpath:str, 
+def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str, 
             bedtoolspath:str="bedtools", macs3app:str="macs3", sortbedpath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", 
             core:int=4, qvalue:float=0.05, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, broad=False, broad_cutoff:float=0.1, 
             min_atac_count:int=None, min_gex_count:int=None, retry=False, **kwargs):
@@ -84,7 +85,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
         "joint_cell": {}
     }
     qc["refpath"] = refpath
-    qc["Organism"] = organism
+
     if retry:
         size_dict, size_list = makedict(chrNameLength)
         qc["Sequencing"] = atac_summary["atac"]["Sequencing"]
@@ -99,7 +100,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
         logger.info("make retry Anndata obj end!")
         # atac reads per barcode
         logger.info("read atac step3 fragments.tsv.gz ...")
-        fragments_file = os.path.join(step3dir, atacname+"_fragments.tsv.gz")
+        fragments_file = os.path.join(outdir, f"../../outs/{atacname}_fragments.tsv.gz")
         d = {}
         d_insert = {}
         with gzip.open(fragments_file, 'rt') as fh:
@@ -258,6 +259,10 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
             chrom = row['chrom']
             start = row['start']
             end = row['end']
+            if start == 0:
+                start = 1
+            if end > size_dict[chrom]:
+                end = size_dict[chrom] - 1
             fhout.write(f'{chrom}\t{start}\t{end}\n')
     # quchong
     cmd = ("{sortbedpath} --max-mem 1G --unique {peakfile} > {peakuniq} && rm {peakfile}"
@@ -611,29 +616,6 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, organism:str, re
     median_fragments_list = [0] + median_sampling + [median_frag_overpeak]
     mean_reads_list = [0] + [int(qc["Sequencing"]["Sequenced read pairs"]/n_cells * float(p))for p in n_cols_key]
     percentage_list = [0] + n_cols_key
-
-    # ---------------atac count medain fragments--------------- 
-    # logger.info("count medain fragments started!")
-    # newdf = pd.read_csv(os.path.join(step3dir, "frag_counts.xls"), sep="\t")
-    # newdf = newdf.loc[newdf["barcode"].isin(joint_cb_list), :].reset_index(drop=True)
-    # rep = newdf["reads"]
-    # newdf = newdf.drop(["reads"], axis=1)
-    # idx = newdf.index.repeat(rep)
-    # newdf = newdf.iloc[idx].reset_index(drop=True)
-    # n_cols_key = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-    # newdf = newdf.sample(frac=1.0).reset_index(drop=True)
-    # median_list = []
-    # for n in n_cols_key:
-    #     logger.info(f"-------------n : {n}--------------------------")
-    #     sampled_df = newdf.sample(frac=n)
-    #     median = sampled_df.groupby([sampled_df["barcode"]],observed=True)["fragment"] \
-    #                     .nunique() \
-    #                     .reset_index(drop=True) \
-    #                     .median()
-    #     median_list.append(int(median))
-    # median_fragments_list = [0] + median_list
-    # mean_reads_list = [0] + [int(qc["Sequencing"]["Sequenced read pairs"]/n_cells * float(p))for p in n_cols_key]
-    # percentage_list = [0] + n_cols_key
 
     qc["median"]["percentage"] = percentage_list
     qc["median"]["mean_reads"] = mean_reads_list

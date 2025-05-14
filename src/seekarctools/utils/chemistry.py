@@ -10,7 +10,7 @@ ADAPTERS = {
 R1_MINLEN = 20
 R2_MINLEN = 60
 ATAC_R1_MINLEN = 20
-ATAC_R2_MINLEN = 60
+ATAC_R2_MINLEN = 50
 
 CHEMISTRY = {
     '__SO01V3':{
@@ -97,7 +97,7 @@ CHEMISTRY = {
         'structure': 'B17U12',
         'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
         'adapter1': [["CTGTCTCTTATACACATCTCCGAGCCCACGAGAC", "3"], ["ACACTCTTTCCCTACACGACGCTCTTCCGATCT", "5"], ["CGTCCGTCGTTGCTCGTAGATGTGTATAAGAGACAG", "5"]], ## SP2 SP1 17L19ME
-        'adapter2': [["GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG", "5"], ["CTGTCTCTTATACACATCTACGAGCAACGACGGACG", "3"]], ## SP2-rev 17L19ME-rev
+        'adapter2': [["GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG", "5"], ["CTGTCTCTTATACACATCTACGAGCAACGACGGACG", "3"]], ## SP2-rev zhixiaoling 17L19ME-rev
         'match_type': (1,),
     }
 }

@@ -54,7 +54,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     atacdir = os.path.dirname(atacjson)
     linkfile = os.path.join(atacdir, 'step4', 'linked_feature.xls')
     if not os.path.exists(linkfile):
-        logger.info(f"Warning : The path of '{linkfile}' is not exists. This may be due to the fact that the species is not human or mouse, causing the pipeline not running astep4")
+        logger.info(f"Warning : The path of '{linkfile}' is not exists. This may be due to the reference genome may be in NCBI format")
         feature_link = 0
         link_gene = 0
         link_peak = 0
@@ -73,7 +73,6 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     data_summary["Joint"][1]["left"][0]["data"]["Pipeline version"] = "seekarctools " + gex_summary["__version__"]
     data_summary["Joint"][1]["left"][0]["data"]["Reference path"] = atac_summary["atac"]["refpath"].split('/')[-1]
     data_summary["Joint"][1]["left"][0]["data"]["Chemistry"] = atac_summary["stat"]["chemistry"]
-    data_summary["Joint"][1]["left"][0]["data"]["Organism"] = atac_summary["atac"]["Organism"]
     data_summary["Joint"][1]["left"][0]["data"]["Include introns"] = gex_summary["include_introns"]
     data_summary["Joint"][1]["right"][0]["data"]["Feature linkages detected"] = f'{feature_link:,}'
     data_summary["Joint"][1]["right"][0]["data"]["Linked genes"] = f'{link_gene:,}'
@@ -90,7 +89,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     gex_tsnefile = os.path.join(atacdir, 'step4', 'gex_tsne_umi.xls')
     # assert os.path.exists(gex_tsnefile), f'{gex_tsnefile} not found!'
     if not os.path.exists(gex_tsnefile):
-        logger.info(f"Warning : The path of '{gex_tsnefile}' is not exists. This may be due to the fact that the species is not human or mouse, causing the pipeline not running astep4")
+        logger.info(f"Warning : The path of '{gex_tsnefile}' is not exists.")
         gex_tsne1 = []
         gex_tsne2 = []
         gex_depth = []
@@ -101,7 +100,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     atac_tsnefile = os.path.join(atacdir, 'step4', 'atac_tsne_umi.xls')
     # assert os.path.exists(atac_tsnefile), f'{atac_tsnefile} not found!'
     if not os.path.exists(atac_tsnefile):
-        logger.info(f"Warning : The path of '{atac_tsnefile}' is not exists. This may be due to the fact that the species is not human or mouse, causing the pipeline not running astep4")
+        logger.info(f"Warning : The path of '{atac_tsnefile}' is not exists.")
         atac_tsne1 = []
         atac_tsne2 = []
         atac_depth = []
@@ -161,7 +160,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     diff_table = os.path.join(atacdir, 'step4', 'gex_FindAllMarkers.xls')
     # assert os.path.exists(diff_table), f'{diff_table} not found!'
     if not os.path.exists(diff_table):
-        logger.info(f"Warning : The path of '{diff_table}' is not exists. This may be due to the fact that the species is not human or mouse, causing the pipeline not running astep4")
+        logger.info(f"Warning : The path of '{diff_table}' is not exists.")
     else:
         diff_data = pre_diff_data(diff_table)
         data_summary["diff"] = diff_data
@@ -215,7 +214,6 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
 
     # summary csv
     header=('Samplename,'
-            'species,'
             'Pipeline_version,'
             'Estimated_number_of_cells,'
             'Feature_linkages_detected,'
@@ -259,8 +257,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
             )
     summary_data = [
             samplename,
-            atac_summary["atac"]["Organism"],
-            "seeksoultools " + gex_summary["__version__"],
+            "seekarctools " + gex_summary["__version__"],
             atac_summary["atac"]["Cells"]["Estimated number of cells"],
             feature_link,
             link_gene,

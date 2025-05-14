@@ -38,7 +38,6 @@
                         "Pipeline version": "seeksoultools 1.2.2 + snapatac2 2.8",
                         "Reference path": "-",
                         "Chemistry": "-",
-                        "Organism": "-",
                         "Include introns": "-"
                     },
                     "description": {
@@ -47,7 +46,6 @@
                         "Pipeline version": "Software used and its version",
                         "Reference path": "Reference file path",
                         "Chemistry": "Reagent type",
-                        "Organism": "Species information",
                         "Include introns": "Including intron reads for quantification"
                     }
                 }

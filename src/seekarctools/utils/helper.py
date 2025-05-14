@@ -230,7 +230,12 @@ class QcStat:
         tmp = {'__version__': __version__}
         for k in self.data:
             if k.endswith('_gc'):
-                tmp[k] = self._sort_gc(self.data[k])
+                if not self.data[k]:
+                    print('Counter is empty!')
+                    tmp[k] = {}
+                    continue
+                else:
+                    tmp[k] = self._sort_gc(self.data[k])
             elif k.endswith('_q'):
                 tmp[k] = self._sort_q(self.data[k])
             else:

@@ -230,6 +230,7 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
         else:
             outfh_multi = dnaio.open(fqout_multi[0], fileformat="fastq", mode="w")
     
+    stat_Dict["seq_17L19ME"] = 0
     for r1, r2 in fh:
         stat_Dict["total"] += 1
         
@@ -353,10 +354,11 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
                     outfh_multi.write(r1, r2)
             else:  #write r2 files
                 stat_Dict["valid"] += 1
-                seq_17l_3me = r1.sequence[:20]
-                if hamming_distance(seq_17l_3me, 'CGTCCGTCGTTGCTCGTAGA') <=2:
-                    stat_Dict["seq_17L19ME"] += 1
-                    continue
+                if len(r1.sequence) > 30:
+                    seq_17l_3me = r1.sequence[:20]
+                    if hamming_distance(seq_17l_3me, 'CGTCCGTCGTTGCTCGTAGA') <=2:
+                        stat_Dict["seq_17L19ME"] += 1
+                        continue
                 flag, r1, r2 = adapter_filter.filter(r1, r2)
                 if flag:
                     if (not use_short_read) or len(r1) == 0 or len(r2) == 0:
@@ -479,6 +481,7 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
         fqout_multi2 = f"{fqout_multi}_2.fq.gz"
         adapter_filter = AdapterFilter(adapter1=adapter1, adapter2=adapter2)
         multi_stat = defaultdict(int)
+        multi_stat["seq_17L19ME"] = 0
         with dnaio.open(fqout1, fqout2, mode="a") as f:
             fh = dnaio.open(fqout_multi1, fqout_multi2, fileformat="fastq", mode="r")
             for r1, r2 in fh:
@@ -503,6 +506,11 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
                 multi_stat["valid"] += 1
                 stat.data["stat"]["valid"] += 1
                 # stat.data["barcode_count"][_] += 1
+                if len(r1.sequence) > 30:
+                    seq_17l_3me = r1.sequence[:20]
+                    if hamming_distance(seq_17l_3me, 'CGTCCGTCGTTGCTCGTAGA') <=2:
+                        multi_stat["seq_17L19ME"] += 1
+                        continue
 
                 flag, r1, r2 = adapter_filter.filter(r1, r2)
                 if flag:

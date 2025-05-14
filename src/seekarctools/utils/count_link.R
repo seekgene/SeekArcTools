@@ -4,6 +4,10 @@ suppressPackageStartupMessages({
   library(Seurat)
   library(dplyr)
   library(argparse)
+  library(GenomicRanges)
+  library(rtracklayer)
+  library(stringr)
+  library(Rsamtools)
 })
 
 parser = ArgumentParser()
@@ -15,18 +19,9 @@ parser$add_argument("--samplename", help="sample name")
 parser$add_argument("--outdir", help="outdir")
 parser$add_argument("--core", help="Parallel running cores")
 parser$add_argument("--memory", help="Memory usage")
-parser$add_argument("--organism", help="human or mouse")
-parser$add_argument("--anno_rds", help="Anno_EnsDb.rds")
+parser$add_argument("--ref_gtf", help="reference. gene/gtf")
+parser$add_argument("--ref_fa", help="reference. fasta/genome.fa")
 args <- parser$parse_args()
-
-organism=args$organism
-if (organism == "human") {
-    library(BSgenome.Hsapiens.UCSC.hg38)
-} else if (organism == "mouse") {
-    library(BSgenome.Mmusculus.UCSC.mm10)
-} else {
-    stop("Warning: Not human or mouse, pipeline does not run astep4")
-}
 
 outdir=args$outdir
 gex_matrix=args$gex_matrix
@@ -36,7 +31,8 @@ rawname=args$rawname
 samplename=args$samplename
 core=args$core
 memory=args$memory
-anno_rds=args$anno_rds
+ref_gtf=args$ref_gtf
+ref_fa=args$ref_fa
 
 cat("available memory:", memory, "\n")
 
@@ -51,35 +47,51 @@ plan()
 gex_data <- Read10X(data.dir = gex_matrix)
 gexobj <- CreateSeuratObject(counts = gex_data, assay = "RNA")
 cat("------------gex------------------------\n")
-gexobj
 
 atac_data <- Read10X(data.dir = atac_matrix)
-atacobj <- CreateSeuratObject(counts = atac_data, assay = "ATAC")
 cat("------------atac------------------------\n")
-atacobj
 
 cat("------------joint------------------------\n")
-# jointcb <- colnames(atacobj)
-# obj <- subset(gexobj, cells = jointcb)
 obj <- gexobj
 
-annotation <- readRDS(anno_rds)
-seqlevels(annotation) <- paste0('chr', seqlevels(annotation))
+cat("------------read gtf------------------------\n")
+gtf_data <- rtracklayer::import(ref_gtf, format = "gtf")
 
-obj[["ATAC"]] <- CreateChromatinAssay(counts = atac_data, sep = c(":", "-"), fragments = fragpath, annotation = annotation)
+mc <- mcols(gtf_data)
+
+if ("gene_type" %in% colnames(mc)) {
+      mcols(gtf_data)$gene_biotype <- mcols(gtf_data)$gene_type
+    } else if ("biotype" %in% colnames(mc)) {
+      mcols(gtf_data)$gene_biotype <- mcols(gtf_data)$biotype
+    } else if ("gene_biotype" %in% colnames(mc)) {
+      cat("There is a gene_biotype column in GTF.\n")
+    } else {
+      mcols(gtf_data)$gene_biotype <- rep("protein_coding", length(mc$gene_id))
+    }
+
+# Check and replace the NA value in gene_fiotype with 'proteino_comding'
+na_indices <- is.na(mcols(gtf_data)$gene_biotype)
+if (any(na_indices)) {
+  mcols(gtf_data)$gene_biotype[na_indices] <- "protein_coding"
+  cat("Replaced NA values in gene_biotype with 'protein_coding'.\n")
+}
+
+if (!("gene_name" %in% colnames(mc))) {
+  mcols(gtf_data)$gene_name <- mcols(gtf_data)$gene_id
+  cat("gene_name do not exist, use gene_id instead\n")
+}
+
+keep_cols <- c("gene_name", "gene_id", "gene_biotype")
+mcols(gtf_data) <- mcols(gtf_data)[, keep_cols]
+cat("------------make GRanges obj end------------------------\n")
+
+
+obj[["ATAC"]] <- CreateChromatinAssay(counts = atac_data, sep = c(":", "-"), fragments = fragpath, annotation = gtf_data)
 obj
 cat("------------joint end------------------------\n")
 
 
-cat("------------filter start------------------------\n")
-# filter
-DefaultAssay(obj) <- "ATAC"
-features.keep <- as.character(seqnames(granges(obj))) %in% standardChromosomes(granges(obj))
-obj.filter <- obj[features.keep, ]
-obj[["ATAC"]] <- obj.filter[["ATAC"]]
-# obj[["ATAC"]] <- subset(obj[["ATAC"]], features = rownames(obj[["ATAC"]])[features.keep]) # seurat 5 
 obj@meta.data$orig.ident <- rawname
-cat("------------filter end------------------------\n")
 
 
 cat("------------RNA cluster start------------------------\n")
@@ -172,31 +184,30 @@ saveRDS(obj,file=paste0(samplename,'.rds'))
 
 cat("------------Linking peaks to genes start------------------------\n")
 # Linking peaks to genes
+fa_data <- open(FaFile(ref_fa))
 DefaultAssay(obj) <- "ATAC"
-if (organism == "human") {
-    obj <- RegionStats(obj, genome = BSgenome.Hsapiens.UCSC.hg38)
-} else {
-    obj <- RegionStats(obj, genome = BSgenome.Mmusculus.UCSC.mm10)
-}
-obj <- LinkPeaks(object = obj,peak.assay = "ATAC",expression.assay = "RNA")
 
-saveRDS(obj,file='joint_peak_link_gene.rds')
+tryCatch({
+  obj <- RegionStats(obj, genome = fa_data)
+  obj <- LinkPeaks(object = obj, peak.assay = "ATAC", expression.assay = "RNA")
+  saveRDS(obj,file='joint_peak_link_gene.rds')
+  # count link
+  linked_peaks <- Links(obj)
+  total_links <- length(linked_peaks)
+  # count link to gene
+  linked_genes <- unique(linked_peaks$gene)
+  total_linked_genes <- length(linked_genes)
+  # count link to peaks
+  linked_peaks_names <- unique(linked_peaks$peak)
+  total_linked_peaks <- length(linked_peaks_names)
+  # output result
+  cat("total links:", total_links, "\n")
+  cat("total linked genes:", total_linked_genes, "\n")
+  cat("total linked peaks:", total_linked_peaks, "\n")
+  write.table(linked_peaks, file="linked_feature.xls", sep = "\t", quote = FALSE, row.names = FALSE)
+}, error = function(e) {
+  cat("The reference genome may be in NCBI format and can not calculate links. Please check!\n")
+})
 cat("------------Linking peaks to genes end------------------------\n")
-
-# count link
-linked_peaks <- Links(obj)
-total_links <- length(linked_peaks)
-# count link to gene
-linked_genes <- unique(linked_peaks$gene)
-total_linked_genes <- length(linked_genes)
-# count link to peaks
-linked_peaks_names <- unique(linked_peaks$peak)
-total_linked_peaks <- length(linked_peaks_names)
-# output result
-cat("total links:", total_links, "\n")
-cat("total linked genes:", total_linked_genes, "\n")
-cat("total linked peaks:", total_linked_peaks, "\n")
-
-write.table(linked_peaks, file="linked_feature.xls", sep = "\t", quote = FALSE, row.names = FALSE)
 
 
