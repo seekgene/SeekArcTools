@@ -103,6 +103,8 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         fragments_file = os.path.join(outdir, f"../../outs/{atacname}_fragments.tsv.gz")
         d = {}
         d_insert = {}
+        fcout = open(os.path.join(step3dir, "frag_counts.xls"), 'w')
+        fcout.write(f'barcode\tfragment\tnum\treads\n')
         with gzip.open(fragments_file, 'rt') as fh:
             for row in fh:
                 tmp = row.strip().split('\t')
@@ -114,9 +116,11 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
                     d_insert[cb][str(insertsize)] = d_insert[cb].get(str(insertsize), 0)
                     d_insert[cb][str(insertsize)] += 1
                 readsnum = tmp[4]
+                fcout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
                 d[cb] = d.get(cb, {'fragments_num':0, 'atac_reads':0})
                 d[cb]['fragments_num'] += 1
                 d[cb]['atac_reads'] += int(readsnum)
+        fcout.close()
         atac_reads_df = pd.DataFrame.from_dict(d, orient='index')
         atac_reads_df.reset_index(inplace=True)
         atac_reads_df.rename(columns={'index': 'barcode'}, inplace=True)
@@ -152,6 +156,8 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         fragments_file = os.path.join(step3dir, atacname+"_fragments.tsv.gz")
         d = {}
         d_insert = {}
+        fcout = open(os.path.join(step3dir, "frag_counts.xls"), 'w')
+        fcout.write(f'barcode\tfragment\tnum\treads\n')
         with gzip.open(raw_fragments_file, 'rt') as fh, gzip.open(fragments_file, "wt") as fhout:
             prev_key = None
             total_reads = 0
@@ -174,6 +180,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
                             d_insert[cb] = d_insert.get(cb, {})
                             d_insert[cb][str(insertsize)] = d_insert[cb].get(str(insertsize), 0)
                             d_insert[cb][str(insertsize)] += 1
+                        fcout.write(f'{cb}\t{fragment}\t{1}\t{int(total_reads)}\n')
                         d[cb] = d.get(cb, {'fragments_num':0, 'atac_reads':0})
                         d[cb]['fragments_num'] += 1
                         d[cb]['atac_reads'] += int(total_reads)
@@ -190,9 +197,11 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
                     d_insert[cb] = d_insert.get(cb, {})
                     d_insert[cb][str(insertsize)] = d_insert[cb].get(str(insertsize), 0)
                     d_insert[cb][str(insertsize)] += 1
+                fcout.write(f'{cb}\t{fragment}\t{1}\t{int(total_reads)}\n')
                 d[cb] = d.get(cb, {'fragments_num':0, 'atac_reads':0})
                 d[cb]['fragments_num'] += 1
                 d[cb]['atac_reads'] += int(total_reads)
+        fcout.close()
 
         atac_reads_df = pd.DataFrame.from_dict(d, orient='index')
         atac_reads_df.reset_index(inplace=True)
@@ -206,7 +215,14 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         atac = snap.pp.import_data(fragment_file=fragments_file, 
                                 chrom_sizes=size_dict,
                                 min_num_fragments=0)
-        atac.write(os.path.join(step3dir, atacname+"_snapatac2_raw.h5ad"))
+        # atac.write(os.path.join(step3dir, atacname+"_snapatac2_raw.h5ad"))
+        os.makedirs('/tmp', exist_ok=True)
+        atac.write(os.path.join('/tmp', atacname+"_snapatac2_raw.h5ad"))
+        tmp_rawh5 = os.path.join('/tmp', atacname+"_snapatac2_raw.h5ad")
+        rawh5 = os.path.join(step3dir, atacname+"_snapatac2_raw.h5ad")
+        cmd = (f"mv {tmp_rawh5} {rawh5}")
+        run(cmd, shell=True)
+
         logger.info("make Anndata obj end!")
 
     # TSS
@@ -298,8 +314,9 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
     run(cmd, shell=True)
 
     dtmp1 = {}
-    with open(fragments_inpeak_uniq, 'rt') as fh, open(os.path.join(step3dir, "frag_counts.xls"), 'w') as fhout:
-        fhout.write(f'barcode\tfragment\tnum\treads\n')
+    # with open(fragments_inpeak_uniq, 'rt') as fh, open(os.path.join(step3dir, "frag_counts.xls"), 'w') as fhout:
+    with open(fragments_inpeak_uniq, 'rt') as fh:
+        # fhout.write(f'barcode\tfragment\tnum\treads\n')
         for row in fh:
             tmp = row.strip().split('\t')
             cb = tmp[3]
@@ -307,7 +324,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
             dtmp1[cb] += 1
             fragment = f'{tmp[0]}_{tmp[1]}-{tmp[2]}'
             readsnum = tmp[4]
-            fhout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
+            # fhout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
 
     dftmp1 = pd.DataFrame(list(dtmp1.items()), columns=["barcode", "fragments_num_overlap_peaks"])
 
@@ -608,12 +625,12 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
 
     median_sampling = []
     for perc, medians in median_tmp.items():
-        median = int(sum(medians))
+        median = int(np.mean(medians))
         median_sampling.append(median)
 
     median_sampling.pop()
-    median_frag_overpeak = int(cell_merged_df['fragments_num_overlap_peaks'].median())
-    median_fragments_list = [0] + median_sampling + [median_frag_overpeak]
+    median_frag = int(cell_merged_df['fragments_num'].median())
+    median_fragments_list = [0] + median_sampling + [median_frag]
     mean_reads_list = [0] + [int(qc["Sequencing"]["Sequenced read pairs"]/n_cells * float(p))for p in n_cols_key]
     percentage_list = [0] + n_cols_key
 
@@ -706,10 +723,10 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
             "{bgzippath} -c {atacname}_fragments_sort.tsv > {atacname}_fragments.tsv.gz; "
             "{tabixpath} -p bed {atacname}_fragments.tsv.gz && rm {atacname}_fragments.tsv {atacname}_fragments_sort.tsv {atacname}_raw_fragments.tsv.gz"
             ).format(step3dir=step3dir, atacname=atacname, memory=memory, gunzippath=gunzippath, sortbedpath=sortbedpath, bgzippath=bgzippath, tabixpath=tabixpath)
-        run(cmd, shell=True)
+        # run(cmd, shell=True)
         logger.info("sort fragments & creat index end!")
 
-    os.remove(fragments_bed)
-    os.remove(fragments_inpeakbed)
-    os.remove(fragments_inpeak_uniq)
+    # os.remove(fragments_bed)
+    # os.remove(fragments_inpeakbed)
+    # os.remove(fragments_inpeak_uniq)
 

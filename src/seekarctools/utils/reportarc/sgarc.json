@@ -20,7 +20,7 @@
                     "title": "summary2",
                     "data": {
                         "GEX Median genes per cell": "-",
-                        "ATAC Median high-quality fragments overlapping peaks per cell": "-"
+                        "ATAC Median high-quality fragments per cell": "-"
                     }
                 }
             ]
@@ -202,7 +202,7 @@
                     "title": "summary2",
                     "data": {
                         "GEX Median genes per cell": "-",
-                        "ATAC Median high-quality fragments overlapping peaks per cell": "-"
+                        "ATAC Median high-quality fragments per cell": "-"
                     }
                 }
             ]
@@ -356,7 +356,7 @@
                     "title": "summary2",
                     "data": {
                         "GEX Median genes per cell": "-",
-                        "ATAC Median high-quality fragments overlapping peaks per cell": "-"
+                        "ATAC Median high-quality fragments per cell": "-"
                     }
                 }
             ]
@@ -392,7 +392,7 @@
                 {
                     "id": 4,
                     "name": "PlotlyLine",
-                    "title": "Median Unique Fragments Overlapping Peaks per Cell",
+                    "title": "Median Unique Fragments per Cell",
                     "data": {
                         "x": [],
                         "y": [],
@@ -400,10 +400,10 @@
                             "title": "Mean Read Pairs per Cell"
                         },
                         "yaxis": {
-                            "title": "Median Unique Fragments Overlapping Peaks per Cell"
+                            "title": "Median Unique Fragments per Cell"
                         }
                     },
-                    "description": "Performing downsample processing on the data, with Mean Read Pairs per Cell on the x-axis and Median Unique Fragments Overlapping Peaks per Cell on the y-axis"
+                    "description": "Performing downsample processing on the data, with Mean Read Pairs per Cell on the x-axis and Median Unique Fragments per Cell on the y-axis"
                 }
             ]
         },

@@ -96,10 +96,19 @@ CHEMISTRY = {
         'shift': False,
         'structure': 'B17U12',
         'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
-        'adapter1': [["CTGTCTCTTATACACATCTCCGAGCCCACGAGAC", "3"], ["ACACTCTTTCCCTACACGACGCTCTTCCGATCT", "5"], ["CGTCCGTCGTTGCTCGTAGATGTGTATAAGAGACAG", "5"]], ## SP2 SP1 17L19ME
-        'adapter2': [["GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG", "5"], ["CTGTCTCTTATACACATCTACGAGCAACGACGGACG", "3"]], ## SP2-rev zhixiaoling 17L19ME-rev
+        'adapter1': [["CTGTCTCTTATACACATCTCCGAGCCCACGAGAC", "3"], ["ACACTCTTTCCCTACACGACGCTCTTCCGATCT", "5"], ["CGTCCGTCGTTGCTCGTAGATGTGTATAAGAGACAG", "5"], ["AGATGTGTATAAGAGACAG", "5"]], ## SP2 SP1 17L19ME
+        'adapter2': [["GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG", "5"], ["GGTGATTAACGATGCATTAGATGTGTATAAGAGACAG","5"], ["CTGTCTCTTATACACATCTACGAGCAACGACGGACG", "3"]], ## SP2-rev zhixiaoling 17L19ME-rev
         'match_type': (1,),
-    }
+    },
+    "DD_5G":{
+       'shift': False,
+        'structure': 'B17U12X13',
+        'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
+        'match_type': (1,),
+        'sc5p': True,
+        'adapter1': [["TTTATTATATGGG", "5"], ["AAGCAGTGGTATCAACGCAGAGTACATGG", "3"], ], 
+        'adapter2': [["CCATGTACTCTGCGTTGATACCACTGCTT", "5"], ["CCCATATAATAAA", "3"], ],
+    },
 }
 
 REF = {

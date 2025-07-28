@@ -81,12 +81,29 @@ if (!("gene_name" %in% colnames(mc))) {
   cat("gene_name do not exist, use gene_id instead\n")
 }
 
-keep_cols <- c("gene_name", "gene_id", "gene_biotype")
+# Check and replace the NA value in gene_name with gene_id
+missing_names <- is.na(mcols(gtf_data)$gene_name)
+if (any(missing_names)) {
+  mcols(gtf_data)$gene_name[missing_names] <- mcols(gtf_data)$gene_id[missing_names]
+  cat("gene_name exist NA value, use gene_id instead\n")
+}
+
+if ("tx_id" %in% colnames(mc)) {
+      cat("There is a tx_id column in GTF.\n")
+    } else if ("transcript_id" %in% colnames(mc)) {
+      mcols(gtf_data)$tx_id <- mcols(gtf_data)$transcript_id
+    } else {
+      mcols(gtf_data)$tx_id <- mcols(gtf_data)$gene_id
+      cat("transcript_id do not exist, use gene_id instead\n")
+    }
+
+keep_cols <- c("tx_id", "gene_name", "gene_id", "gene_biotype", "type")
 mcols(gtf_data) <- mcols(gtf_data)[, keep_cols]
+gtf_filter <- gtf_data[gtf_data$type %in% c("CDS", "cds", "UTR", "utr", "exon", "gap")]
 cat("------------make GRanges obj end------------------------\n")
 
 
-obj[["ATAC"]] <- CreateChromatinAssay(counts = atac_data, sep = c(":", "-"), fragments = fragpath, annotation = gtf_data)
+obj[["ATAC"]] <- CreateChromatinAssay(counts = atac_data, sep = c(":", "-"), fragments = fragpath, annotation = gtf_filter)
 obj
 cat("------------joint end------------------------\n")
 
@@ -151,35 +168,6 @@ write.table(tsne_loci, file='atac_tsne_umi.xls',
             quote=FALSE)
 cat("------------ATAC cluster end------------------------\n")
 
-cat("------------WNN umap start------------------------\n")
-## WNN
-DefaultAssay(obj) <- "RNA"
-obj <- FindMultiModalNeighbors(
-  object = obj,
-  reduction.list = list("pca", "lsi"), 
-  dims.list = list(1:30, 2:30),
-  modality.weight.name = "RNA.weight",
-  verbose = TRUE
-)
-obj <- RunUMAP(
-  object = obj,
-  nn.name = "weighted.nn",
-  reduction.name = "wnnumap",
-  reduction.key = "wnnumap_",
-  assay = "RNA",
-  verbose = TRUE
-)
-cat("------------WNN tsne start------------------------\n")
-obj <- RunTSNE(
-  object = obj,
-  nn.name = "weighted.nn",
-  reduction.name = "wnntsne",
-  reduction.key = "wnntsne_",
-  assay = "RNA",
-  verbose = TRUE,
-  check_duplicates = FALSE
-)
-cat("------------WNN cluster end------------------------\n")
 saveRDS(obj,file=paste0(samplename,'.rds'))
 
 cat("------------Linking peaks to genes start------------------------\n")

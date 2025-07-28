@@ -71,7 +71,7 @@ def bwamem_wrapper(
     ):
     """wrapper for bwa-mem"""
 
-    args = ('{bwa_path} mem -t {core} -M -I 250[150,1000,1] -R "@RG\\tID:{atacname}\\tLB:WGS\\tPL:Illumina\\tPU:{atacname}\\tSM:{atacname}" {genomefa} '
+    args = ('{bwa_path} mem -t {core} -M -I 250[150,1000,36] -R "@RG\\tID:{atacname}\\tLB:WGS\\tPL:Illumina\\tPU:{atacname}\\tSM:{atacname}" {genomefa} '
             '{astep1_fq1} {astep1_fq2} | {samtools_path} sort -@ {core} -o {prefix}mem_pe_Sort.bam').format(
                 bwa_path=bwa_path, core=core, atacname=atacname, genomefa=genomefa, astep1_fq1=afq[0], astep1_fq2=afq[-1], samtools_path=samtools_path, prefix=prefix)
     _ = cmd_execute(args)
@@ -111,15 +111,20 @@ def unzip_wrapper(gzfile:str, outfile:str):
     cmd_execute(args, check=True)
     return outfile
 
-def qualimap_wrapper(bam:str, gtf:str, outdir:str, qualimap_path:str="qualimap", **kwargs):
+def qualimap_wrapper(bam:str, gtf:str, outdir:str, SC5P:bool=None, qualimap_path:str="qualimap", **kwargs):
     """ -pe,--paired? -s?"""
     strand = {
         'f': 'strand-specific-forward',
         'r': 'strand-specific-reverse',
         'non': 'non-strand-specific'
     }
-    s="f"
-
+    s = "non"
+    # 5'
+    if isinstance(SC5P, bool):
+        if SC5P:
+            s="r"
+        else:
+            s="f"
     if '-pe' in kwargs :
        s = 'non'
     # gtf.gz?
@@ -164,12 +169,17 @@ def check_gtf_region(gtf, region):
     os.exit(1)
 
 def featureCounts_wrapper(
-    bam:str, gtf:str, gexname:str, outdir:str, region:str, 
+    bam:str, gtf:str, gexname:str, outdir:str, region:str, SC5P:bool=None, 
     core:int=4, featureCounts_path="featureCounts", **kwargs
     ):
     outcounts = os.path.join(outdir, 'counts.txt')
     region = check_gtf_region(gtf, region)
-    s = "1"
+    s = 0
+    if isinstance(SC5P, bool):
+        if SC5P:
+            s = "2"
+        else:
+            s = "1"
 
     if '-p' in kwargs:
        s = 0

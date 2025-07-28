@@ -69,6 +69,7 @@ def estep1(obj, **kwargs):
 @click.option("--outdir", default="./", show_default=True, type=click.Path(), help="Output dir.")
 @click.option("--star_path", "star_path", default="STAR", help="Path to executable STAR aligner.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
+@click.option("--sc5p",is_flag=True,default=False,show_default=True,help="If set, the single cell data is considered as 5' data.")
 @click.option("--include-introns", "region", is_flag=True, default=False, callback=include_introns_callback, show_default=True, help="include introns or not.")
 @click.pass_obj
 def estep2(obj, **kwargs):
@@ -81,7 +82,6 @@ def estep2(obj, **kwargs):
 @click.option("--samplename", required=True, help="Sample name.")
 @click.option("--gtf", required=True, type=click.Path(), help="Path to GTF file.")
 @click.option("--umi_correct_method", type=click.Choice(["cluster", "adjacency", "directional"]), default="adjacency", show_default=True, help="cluster, adjacency, directional")
-@click.option("--expectNum", "expectNum", default=3000, show_default=True, help="Expected number of cells that used as input in cell calling algorithm.")
 @click.pass_obj
 def estep3(obj, **kwargs):
     from .estep3 import count, cell_calling
@@ -220,8 +220,6 @@ def report(obj, **kwargs):
               help="Path to reference.")
 @click.option("--star_path", "star_path", default="STAR",
               help="Path to executable STAR aligner.")
-@click.option("--expectNum", "expectNum", default=3000, show_default=True,
-              help="Expected number of cells that used as input in cell calling algorithm.")
 @click.option("--umi_correct_method", type=click.Choice(["cluster", "adjacency", "directional"]), default="adjacency", show_default=True, hidden=True,
               help="cluster, adjacency, directional")
 @click.option("--qvalue", default=0.05, show_default=True, 
@@ -265,6 +263,7 @@ def run(obj, **kwargs):
 
     if "estep1" in obj["steps"]:
         kwargs["chemistry"] = "DD-Q"
+        # kwargs["chemistry"] = "DD_5G"
         from ..utils.barcode import check_rna_options
         chemistry_kwargs = check_rna_options(fq1=kwargs["rnafq1"], fq2=kwargs["rnafq2"], **kwargs)
         kwargs.update(chemistry_kwargs)

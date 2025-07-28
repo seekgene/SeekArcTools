@@ -34,8 +34,18 @@ def get_atac_tsne(tsnefile):
 def count_link(linkfile):
     linkdf = pd.read_table(linkfile)
     total_rows = linkdf.shape[0]
-    unique_genes = linkdf['gene'].nunique()
-    unique_peaks = linkdf['peak'].nunique()
+    if total_rows == 0:
+        unique_genes = 0
+        unique_peaks = 0
+    else:
+        if 'gene' in linkdf.columns:
+            unique_genes = linkdf['gene'].nunique()
+        else:
+            unique_genes = 0
+        if 'peak' in linkdf.columns:
+            unique_peaks = linkdf['peak'].nunique()
+        else:
+            unique_peaks = 0
     return total_rows, unique_genes, unique_peaks
 
 
@@ -66,7 +76,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     # joint: title
     data_summary["Joint"][0]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["Joint"][0]["right"][0]["data"]["GEX Median genes per cell"] = f'{gex_summary["cells"]["Median Genes per Cell"]:,}'
-    data_summary["Joint"][0]["right"][0]["data"]["ATAC Median high-quality fragments overlapping peaks per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments in peaks per cell"]:,}'
+    data_summary["Joint"][0]["right"][0]["data"]["ATAC Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
     # joint: left_Sample riget_Joint Metrics
     data_summary["Joint"][1]["left"][0]["data"]["Sample ID"] = samplename
     data_summary["Joint"][1]["left"][0]["data"]["Sample description"] = rawname
@@ -125,7 +135,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     # rna: title
     data_summary["Rna"][0]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["Rna"][0]["right"][0]["data"]["GEX Median genes per cell"] = f'{gex_summary["cells"]["Median Genes per Cell"]:,}'
-    data_summary["Rna"][0]["right"][0]["data"]["ATAC Median high-quality fragments overlapping peaks per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments in peaks per cell"]:,}'
+    data_summary["Rna"][0]["right"][0]["data"]["ATAC Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
     # rna: left_Sequencing riget_Saturation tu
     data_summary["Rna"][1]["left"][0]["data"]["Number of Reads"] = f'{gex_summary["stat"]["total"]:,}'
     data_summary["Rna"][1]["left"][0]["data"]["Valid Barcode"] = f'{gex_summary["stat"]["valid"]/gex_summary["stat"]["total"]:.2%}'
@@ -168,7 +178,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     # atac: title
     data_summary["ATAC"][0]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["ATAC"][0]["right"][0]["data"]["GEX Median genes per cell"] = f'{gex_summary["cells"]["Median Genes per Cell"]:,}'
-    data_summary["ATAC"][0]["right"][0]["data"]["ATAC Median high-quality fragments overlapping peaks per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments in peaks per cell"]:,}'
+    data_summary["ATAC"][0]["right"][0]["data"]["ATAC Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
     # atac: left_Sequencing riget_median_fragments tu
     data_summary["ATAC"][1]["left"][0]["data"]["Sequenced read pairs"] = f'{atac_summary["atac"]["Sequencing"]["Sequenced read pairs"]:,}'
     data_summary["ATAC"][1]["left"][0]["data"]["Valid barcodes"] = f'{atac_summary["atac"]["Sequencing"]["Valid barcodes"]:.2%}'

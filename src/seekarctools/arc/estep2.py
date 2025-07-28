@@ -47,7 +47,7 @@ def check_bam(bampath):
         cmd_execute(cmd, check=True)
 
 def align(
-    fq:list, genomeDir:str, gtf:str, samplename:str, outdir:str, region:str,
+    fq:list, genomeDir:str, gtf:str, samplename:str, outdir:str, region:str, sc5p=False,
     core:int=4, star_path:str="STAR", **kwargs):
 
     if ("steps" not in kwargs) or (not kwargs["steps"]):
@@ -90,7 +90,8 @@ def align(
 
     logger.info("run_qualimap started!")
     from ..utils.wrappers import qualimap_wrapper
-    RnaSeqMetrics = qualimap_wrapper(bam=bam, gtf=gtf, outdir=STAR_dir)
+    # RnaSeqMetrics = qualimap_wrapper(bam=bam, gtf=gtf, outdir=STAR_dir)
+    RnaSeqMetrics = qualimap_wrapper(bam=bam, gtf=gtf, outdir=STAR_dir, SC5P=sc5p)
     logger.info("run_qualimap done!")
 
     with open(os.path.join(outdir, f"{gexname}_summary.json")) as fh:
@@ -149,6 +150,7 @@ def align(
             gexname=gexname,
             outdir=featureCounts_dir,
             gtf=gtf,
+            SC5P=sc5p,
             region=region,
             core=core
         )

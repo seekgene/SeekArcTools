@@ -70,7 +70,7 @@ def multiple_alignment(reads, gene_ids, gtf_tree):
         all_matches = gtf_tree[chrm][pos]
         for match in all_matches:
             match_dict =  match.data
-            if match_dict["gene_id"] in gene_ids and "exon_id" in match_dict.keys():
+            if match_dict["gene_id"] in gene_ids and ("exon_id" in match_dict.keys() or match_dict["type"] == "exon"):
                 assignment.add(match_dict["gene_id"])
 
     if len(assignment) == 1:

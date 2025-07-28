@@ -176,8 +176,8 @@ def get_new_bc(bc:str, white_list:set, distance:int)->set:
 class AdapterFilter:
     """过滤接头"""
     def __init__(self, adapter1:list=[], adapter2:list=[],):
-        self.adapter1 = [BackAdapter(sequence=_, min_overlap=15) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=7) for _, p in adapter1]
-        self.adapter2 = [BackAdapter(sequence=_, min_overlap=15) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=15) for _, p in adapter2]
+        self.adapter1 = [BackAdapter(sequence=_, min_overlap=10) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=7) for _, p in adapter1]
+        self.adapter2 = [BackAdapter(sequence=_, min_overlap=10) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=10) for _, p in adapter2]
     
     def filter(self, r1=None, r2=None) -> tuple:
         flag = False
