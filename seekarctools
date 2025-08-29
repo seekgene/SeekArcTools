@@ -36,5 +36,5 @@ then
 fi
 
 set -o errexit
-seekarctools_py "$@"
+seekarctools "$@"
 

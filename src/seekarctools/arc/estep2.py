@@ -90,7 +90,6 @@ def align(
 
     logger.info("run_qualimap started!")
     from ..utils.wrappers import qualimap_wrapper
-    # RnaSeqMetrics = qualimap_wrapper(bam=bam, gtf=gtf, outdir=STAR_dir)
     RnaSeqMetrics = qualimap_wrapper(bam=bam, gtf=gtf, outdir=STAR_dir, SC5P=sc5p)
     logger.info("run_qualimap done!")
 

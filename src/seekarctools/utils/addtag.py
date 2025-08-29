@@ -49,7 +49,8 @@ def find_umi_correction_recursive(umi_raw, d):
 #                f"set when the software version generating the umi.xls is lower than 1.1")
 #            )
 def add_tag(inbam:str, outbam:str, umifile:str=None, recursive:bool=False):
-    """bam添加CB、CR、UB、UR标签
+    """
+    Add CB, CR, UB, UR tags to bam file.
     """
     default_verbosity = pysam.set_verbosity(0)
     samfile = pysam.AlignmentFile(inbam, "rb")

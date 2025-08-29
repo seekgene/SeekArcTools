@@ -320,14 +320,6 @@ class UMIClusterer:
     def _get_connected_components_adjacency(self, umis, graph, counts):
         ''' find the connected UMIs within an adjacency dictionary'''
 
-        # TS: TO DO: Work out why recursive function doesn't lead to same
-        # final output. Then uncomment below
-
-        # if len(graph) < 10000:
-        #    self.search = breadth_first_search_recursive
-        # else:
-        #    self.search = breadth_first_search
-
         found = set()
         components = list()
 
@@ -615,73 +607,3 @@ def calculate_metrics(counts_file, detail_file, filterd_barcodes_file, filterd_f
                       "saturation": saturation_sampling,
                       "median": median_sampling
     }
-
-def cutreads(step1afq1, step1afq2, atacjson, outdir, atacname, **kwargs):
-    total = 0
-    available = 0
-    outafq1 = os.path.join(outdir, 'step1', atacname+"_cutR1.fastq.gz")
-    outafq2 = os.path.join(outdir, 'step1', atacname+"_cutR2.fastq.gz")
-    pattern = r'CGTCCGTCGTTGCTCGTAGATGTGTATAAGAGACAG'
-
-    with dnaio.open(file1=step1afq1, file2=step1afq2,  mode='r') as fh, dnaio.open(file1=outafq1, file2=outafq2,  mode='w') as fhout:
-        for r1,r2 in fh:
-            total += 1
-
-            r1name = r1.name
-            r1seq = r1.sequence
-            r1qua = r1.qualities
-            if len(r1seq) < 50:
-                continue
-            else:
-                match = re.search(pattern, r1seq)
-                if match:
-                    start_index = match.end()
-                    if start_index + 50 < len(r1seq):
-                        r1_sequence = r1seq[start_index:start_index + 50]
-                        r1_qualities = r1qua[start_index:start_index + 50]
-                    else:
-                        r1_sequence = r1seq[start_index:]
-                        r1_qualities = r1qua[start_index:]
-                else:
-                    if len(r1seq) > 93:
-                        r1_sequence = r1seq[43:93]
-                        r1_qualities = r1qua[43:93]
-                    else:
-                        r1_sequence = r1seq[43:]
-                        r1_qualities = r1qua[43:]
-                re1 = dnaio.Sequence(
-                        name = r1name,
-                        sequence = r1_sequence,
-                        qualities = r1_qualities
-                        ) 
-                r2name = r2.name
-                r2seq = r2.sequence
-                r2qua = r2.qualities
-                if len(r2seq) > 50:
-                    r2_sequence = r2seq[:50]
-                    r2_qualities = r2qua[:50]
-                else:
-                    r2_sequence = r2seq
-                    r2_qualities = r2qua
-                re2 = dnaio.Sequence(
-                        name = r2name,
-                        sequence = r2_sequence,
-                        qualities = r2_qualities
-                        )
-                available += 1
-                fhout.write(re1, re2)
-
-    with open(atacjson, "r") as fh:
-        step1_summary = json.load(fh)
-
-    with open(atacjson, "w") as fh1:
-        step1_summary["stat"]["step1_readspair"] = total
-        step1_summary["stat"]["step1_available"] = available
-        json.dump(
-            step1_summary,
-            fh1,
-            indent=4,
-            default=lambda o: int(o) if isinstance(o, np.int64) else o
-        )
-
-    return outafq1, outafq2

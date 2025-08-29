@@ -45,18 +45,12 @@ plan("multicore", workers = as.integer(core))
 plan()
 
 gex_data <- Read10X(data.dir = gex_matrix)
-gexobj <- CreateSeuratObject(counts = gex_data, assay = "RNA")
-cat("------------gex------------------------\n")
-
+obj <- CreateSeuratObject(counts = gex_data, assay = "RNA")
 atac_data <- Read10X(data.dir = atac_matrix)
-cat("------------atac------------------------\n")
 
-cat("------------joint------------------------\n")
-obj <- gexobj
-
-cat("------------read gtf------------------------\n")
+# read gtf
 gtf_data <- rtracklayer::import(ref_gtf, format = "gtf")
-
+# make GRanges obj
 mc <- mcols(gtf_data)
 
 if ("gene_type" %in% colnames(mc)) {
@@ -100,18 +94,16 @@ if ("tx_id" %in% colnames(mc)) {
 keep_cols <- c("tx_id", "gene_name", "gene_id", "gene_biotype", "type")
 mcols(gtf_data) <- mcols(gtf_data)[, keep_cols]
 gtf_filter <- gtf_data[gtf_data$type %in% c("CDS", "cds", "UTR", "utr", "exon", "gap")]
-cat("------------make GRanges obj end------------------------\n")
 
 
 obj[["ATAC"]] <- CreateChromatinAssay(counts = atac_data, sep = c(":", "-"), fragments = fragpath, annotation = gtf_filter)
 obj
-cat("------------joint end------------------------\n")
 
 
 obj@meta.data$orig.ident <- rawname
 
 
-cat("------------RNA cluster start------------------------\n")
+# RNA cluster
 DefaultAssay(obj) <- "RNA"
 obj[['percent.mito']] <- PercentageFeatureSet(object = obj, pattern = '^(MT|mt|Mt)-')
 obj@meta.data <- obj@meta.data %>% dplyr::rename("mito" = "percent.mito")
@@ -133,7 +125,6 @@ write.table(tsne_loci, file='gex_tsne_umi.xls',
             col.names=TRUE, 
             sep="\t", 
             quote=FALSE)
-cat("------------RNA cluster end------------------------\n")
 
 
 # diff table
@@ -145,7 +136,7 @@ obj.markers$Ensembl[is.na(obj.markers$Ensembl)] <- "na"
 write.table(obj.markers, file='gex_FindAllMarkers.xls', row.names=FALSE, sep="\t", quote=FALSE)
 
 
-cat("------------ATAC cluster start------------------------\n")
+# ATAC cluster
 # Assay ATAC count NS, TSS
 DefaultAssay(obj) <- "ATAC"
 obj <- NucleosomeSignal(obj)
@@ -166,11 +157,9 @@ write.table(tsne_loci, file='atac_tsne_umi.xls',
             col.names=TRUE, 
             sep="\t", 
             quote=FALSE)
-cat("------------ATAC cluster end------------------------\n")
 
 saveRDS(obj,file=paste0(samplename,'.rds'))
 
-cat("------------Linking peaks to genes start------------------------\n")
 # Linking peaks to genes
 fa_data <- open(FaFile(ref_fa))
 DefaultAssay(obj) <- "ATAC"
@@ -189,13 +178,7 @@ tryCatch({
   linked_peaks_names <- unique(linked_peaks$peak)
   total_linked_peaks <- length(linked_peaks_names)
   # output result
-  cat("total links:", total_links, "\n")
-  cat("total linked genes:", total_linked_genes, "\n")
-  cat("total linked peaks:", total_linked_peaks, "\n")
   write.table(linked_peaks, file="linked_feature.xls", sep = "\t", quote = FALSE, row.names = FALSE)
 }, error = function(e) {
   cat("The reference genome may be in NCBI format and can not calculate links. Please check!\n")
 })
-cat("------------Linking peaks to genes end------------------------\n")
-
-

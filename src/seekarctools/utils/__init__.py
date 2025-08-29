@@ -59,13 +59,3 @@ def splitref(fa, gtf, outdir):
 def validate_gtf(gtf, new_gtf:str=None, gene_id_str:str="gene_id"):
     from .gtfvalidator import validator
     validator(gtf, new_gtf, gene_id_str)
-
-@utils.command(help="multi report.")
-@click.option("--outdir", type=click.Path(), required=True, help="output dir.")
-@click.option("--samplename", required=True, help="samplename.")
-@click.option("--rnadir", type=click.Path(), help="rna root dir.")
-@click.option("--tcrdir", type=click.Path(), help="tcr root dir,  xxxx/data or xxxx/outs.")
-@click.option("--bcrdir", type=click.Path(), help="bcr root dir,  xxxx/data or xxxx/outs.")
-def multireport(outdir, samplename, rnadir=None, tcrdir=None, bcrdir=None):
-    from .multi_report import report
-    report(outdir, samplename, rnadir, tcrdir, bcrdir)

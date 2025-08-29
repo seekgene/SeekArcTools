@@ -45,14 +45,16 @@ def arc(obj, steps):
 @click.option("--skip_multi", "use_multi", is_flag=True, default=True, show_default=True, help="Do not rescue barcode match multi when do correction.")
 @click.option("--skip_len", "use_short_read", is_flag=True, default=False, show_default=True, help="Skip filtering short reads after adapter filter, short reads will be used.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
-# @click.option("--chemistry", type=click.Choice(["DDV1", "DDV2", "DDVS", "DD5V1", "MM", "MM-D", "DD-Q", "custom"]), help="DDV1, DDV2, DDVS, DD5V1, MM, MM-D, DD-Q.")
+@click.option("--chemistry", type=click.Choice(["DD-AG", "DD5-AG", "custom"]), help="DD-AG, DD5-AG.")
 @click.pass_obj
 def estep1(obj, **kwargs):
-    if kwargs["barcode"]:
-        print(f'atac barcode path:{kwargs["barcode"]}')
-        kwargs["chemistry"] = "custom"
-    else:
-        kwargs["chemistry"] = "DD-Q"
+    # if kwargs["barcode"]:
+    #     kwargs["chemistry"] = "custom"
+    # else:
+    #     kwargs["chemistry"] = "DD-Q"
+    # if kwargs["sc5p"]:
+    #     kwargs["chemistry"] = "DD_5G"
+    os.makedirs(kwargs["outdir"], exist_ok=True)
     from ..utils.barcode import check_rna_options
     chemistry_kwargs = check_rna_options(**kwargs)
     kwargs.update(chemistry_kwargs)
@@ -102,14 +104,15 @@ def estep3(obj, **kwargs):
 @click.option("--skip_multi", "use_multi", is_flag=True, default=True, show_default=True, help="Do not rescue barcode match multi when do correction.")
 @click.option("--skip_len", "use_short_read", is_flag=True, default=False, show_default=True, help="Skip filtering short reads after adapter filter, short reads will be used.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
-# @click.option("--chemistry", type=click.Choice(["DDV1", "DDV2", "DDVS", "DD5V1", "MM", "MM-D", "DD-Q", "custom"]), help="DDV1, DDV2, DDVS, DD5V1, MM, MM-D, DD-Q.")
+@click.option("--chemistry", type=click.Choice(["DD-AA", "custom"]), help="DD-AA.")
 @click.pass_obj
 def astep1(obj, **kwargs):
-    if kwargs["barcode"]:
-        print(f'atac barcode path:{kwargs["barcode"]}')
-        kwargs["chemistry"] = "custom"
-    else:
-        kwargs["chemistry"] = "DD_AG"
+    # if kwargs["barcode"]:
+    #     print(f'atac barcode path:{kwargs["barcode"]}')
+    #     kwargs["chemistry"] = "custom"
+    # else:
+    #     kwargs["chemistry"] = "DD_AG"
+    os.makedirs(kwargs["outdir"], exist_ok=True)
     from ..utils.atacbarcode import check_atac_options
     chemistry_kwargs = check_atac_options(**kwargs)
     kwargs.update(chemistry_kwargs)
@@ -212,6 +215,8 @@ def report(obj, **kwargs):
               help="Do not rescue barcode match multi when do correction.")
 @click.option("--skip_len", "use_short_read", is_flag=True, default=False, show_default=True, 
               help="Skip filtering short reads after adapter filter, short reads will be used.")
+@click.option("--chemistry", type=click.Choice(["DD-AG", "DD5-AG", "custom"]), 
+              help="DD-AG, DD5-AG.")
 @click.option("--core", default=4, show_default=True,
               help="Set max number of cpus that pipeline might request at the same time.")
 @click.option("--include-introns", "region", is_flag=True, default=False, callback=include_introns_callback, show_default=True,
@@ -262,8 +267,12 @@ def run(obj, **kwargs):
     os.makedirs(kwargs["outdir"], exist_ok=True)
 
     if "estep1" in obj["steps"]:
-        kwargs["chemistry"] = "DD-Q"
-        # kwargs["chemistry"] = "DD_5G"
+        # if kwargs["barcode"]:
+        #     kwargs["chemistry"] = "custom"
+        # else:
+        #     kwargs["chemistry"] = "DD-Q"
+        # if kwargs["sc5p"]:
+        #     kwargs["chemistry"] = "DD_5G"
         from ..utils.barcode import check_rna_options
         chemistry_kwargs = check_rna_options(fq1=kwargs["rnafq1"], fq2=kwargs["rnafq2"], **kwargs)
         kwargs.update(chemistry_kwargs)
@@ -272,9 +281,10 @@ def run(obj, **kwargs):
         from ..utils.barcode import barcode_main
         barcode_main(fq1=kwargs["rnafq1"], fq2=kwargs["rnafq2"], **kwargs)
 
-    fq = os.path.join(kwargs["outdir"], "step1", f"{kwargs['gexname']}_2.fq.gz")
+    # estep1_fq1 = os.path.join(kwargs["outdir"], "step1", f"{kwargs['gexname']}_1.fq.gz")
+    estep1_fq2 = os.path.join(kwargs["outdir"], "step1", f"{kwargs['gexname']}_2.fq.gz")
     # paired: [r1.fq.gz, r2.fq.gz]
-    kwargs["fq"] = [fq, ]
+    kwargs["fq"] = [estep1_fq2, ]
 
     if "estep2" in obj["steps"]:
         from .estep2 import align
@@ -298,7 +308,7 @@ def run(obj, **kwargs):
     os.makedirs(kwargs["outdir"], exist_ok=True)
 
     if "astep1" in obj["steps"]:
-        kwargs["chemistry"] = "DD_AG"
+        kwargs["chemistry"] = "DD-AA"
         from ..utils.atacbarcode import check_atac_options
         chemistry_kwargs = check_atac_options(fq1=kwargs["atacfq1"], fq2=kwargs["atacfq2"], **kwargs)
         kwargs.update(chemistry_kwargs)

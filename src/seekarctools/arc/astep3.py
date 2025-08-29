@@ -30,7 +30,7 @@ def makedict(chrlenfile):
     return d, size_list
 
 def calulate_chunck_size(detail_file):
-    chunck_size = 5000000
+    chunck_size = 10000000
     with open(detail_file) as f:
         line_count = sum(1 for _ in f)
     n_split = int(line_count/chunck_size)
@@ -54,7 +54,7 @@ def log_transform(x, alpha=0.1):
 
 
 def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str, 
-            bedtoolspath:str="bedtools", macs3app:str="macs3", sortbedpath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", 
+            bedtoolspath:str="bedtools", macs3app:str="macs3", sortbedpath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", sortpath:str="sort", 
             core:int=4, qvalue:float=0.05, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, broad=False, broad_cutoff:float=0.1, 
             min_atac_count:int=None, min_gex_count:int=None, retry=False, **kwargs):
     gexstep3dir = os.path.join(gexoutdir, "step3")
@@ -90,22 +90,32 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         size_dict, size_list = makedict(chrNameLength)
         qc["Sequencing"] = atac_summary["atac"]["Sequencing"]
         qc["Mapping"] = atac_summary["atac"]["Mapping"]
-        logger.info(f'Sequencing QC : {qc["Sequencing"]}')
-        logger.info(f'Mapping QC : {qc["Mapping"]}')
 
         logger.info("make retry Anndata obj started!")
         raw_snap_h5ad = os.path.join(step3dir, atacname+"_snapatac2_raw.h5ad")
         assert os.path.exists(raw_snap_h5ad), f'{raw_snap_h5ad} not found!'
         atac = sc.read_h5ad(raw_snap_h5ad)
         logger.info("make retry Anndata obj end!")
+
+        # fragment.tsv.gz sort by barcode
+        logger.info("fragment.tsv.gz sort by barcode started!")
+        fragments_file = os.path.join(outdir, f"../../outs/{atacname}_fragments.tsv.gz")
+        cmd = ("cd {step3dir}; "
+            "{gunzippath} -c {fragments_file} > {atacname}_fragments.tsv; "
+            "{sortpath} -k4,4 {atacname}_fragments.tsv > {atacname}_fragments_sorted_by_barcode.tsv && rm {atacname}_fragments.tsv"
+            ).format(step3dir=step3dir, fragments_file=fragments_file, atacname=atacname, gunzippath=gunzippath, sortpath=sortpath)
+        logger.info(cmd)
+        run(cmd, shell=True)
+        sort_fragments_file = os.path.join(step3dir, f"{atacname}_fragments_sorted_by_barcode.tsv")
+        logger.info("fragment.tsv.gz sort by barcode end!")
+
         # atac reads per barcode
         logger.info("read atac step3 fragments.tsv.gz ...")
-        fragments_file = os.path.join(outdir, f"../../outs/{atacname}_fragments.tsv.gz")
         d = {}
         d_insert = {}
         fcout = open(os.path.join(step3dir, "frag_counts.xls"), 'w')
         fcout.write(f'barcode\tfragment\tnum\treads\n')
-        with gzip.open(fragments_file, 'rt') as fh:
+        with open(sort_fragments_file, 'rt') as fh:
             for row in fh:
                 tmp = row.strip().split('\t')
                 cb = tmp[3]
@@ -124,6 +134,8 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         atac_reads_df = pd.DataFrame.from_dict(d, orient='index')
         atac_reads_df.reset_index(inplace=True)
         atac_reads_df.rename(columns={'index': 'barcode'}, inplace=True)
+        os.remove(sort_fragments_file)
+        logger.info("retry fragments count end!")
     else:
         # make fragments and QC
         logger.info("make fragments and QC started!")
@@ -145,12 +157,9 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         qc["Sequencing"]["Q30 bases in read 1"] = bam_qc["frac_q30_bases_read1"]
         qc["Sequencing"]["Q30 bases in read 2"] = bam_qc["frac_q30_bases_read2"]
         qc["Sequencing"]["Percent duplicates"] = bam_qc["frac_duplicates"]
-        qc["Mapping"]["Confidently mapped read pairs"] = bam_qc["frac_confidently_mapped"]
-        qc["Mapping"]["Unmapped read pairs"] = bam_qc["frac_unmapped"]
+        qc["Mapping"]["Confidently mapped read pairs"] = atac_summary["bam_count"]["confidently_mapped_read_pairs"]
+        qc["Mapping"]["Unmapped read pairs"] = atac_summary["bam_count"]["unmapped_read_pairs"]
         qc["Mapping"]["Non-nuclear read pairs"] = bam_qc["frac_nonnuclear"]
-
-        logger.info(f'Sequencing QC : {qc["Sequencing"]}')
-        logger.info(f'Mapping QC : {qc["Mapping"]}')
 
         logger.info("dedup raw fragments file & del chrM & count started!")
         fragments_file = os.path.join(step3dir, atacname+"_fragments.tsv.gz")
@@ -280,7 +289,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
             if end > size_dict[chrom]:
                 end = size_dict[chrom] - 1
             fhout.write(f'{chrom}\t{start}\t{end}\n')
-    # quchong
+    # Remove duplicate lines
     cmd = ("{sortbedpath} --max-mem 1G --unique {peakfile} > {peakuniq} && rm {peakfile}"
         ).format(sortbedpath=sortbedpath, peakfile=peakfile, peakuniq=peakuniq)
     run(cmd, shell=True)
@@ -299,9 +308,6 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
             peakuniqlen += end - start
             peaks.append(f'{chrom}:{start}-{end}')
     genome_in_peaks = peakuniqlen/genomelen
-    logger.info(f'snapatac2 call peaks number: {peaknum}')
-    logger.info(f'snapatac2 call peaks length: {peakuniqlen}')
-    logger.info(f'snapatac2 call peaks fraction: {genome_in_peaks:.2%}')
 
     logger.info("call peak end!")
 
@@ -314,9 +320,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
     run(cmd, shell=True)
 
     dtmp1 = {}
-    # with open(fragments_inpeak_uniq, 'rt') as fh, open(os.path.join(step3dir, "frag_counts.xls"), 'w') as fhout:
     with open(fragments_inpeak_uniq, 'rt') as fh:
-        # fhout.write(f'barcode\tfragment\tnum\treads\n')
         for row in fh:
             tmp = row.strip().split('\t')
             cb = tmp[3]
@@ -324,7 +328,6 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
             dtmp1[cb] += 1
             fragment = f'{tmp[0]}_{tmp[1]}-{tmp[2]}'
             readsnum = tmp[4]
-            # fhout.write(f'{cb}\t{fragment}\t{1}\t{int(readsnum)}\n')
 
     dftmp1 = pd.DataFrame(list(dtmp1.items()), columns=["barcode", "fragments_num_overlap_peaks"])
 
@@ -441,7 +444,6 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         else:
             cell_label = 1
             nocell_label = 0
-        logger.info(f"cell_label : {cell_label}")
         joint_df_unique['kmeans_labels'] = labels
         joint_df_unique['is_cell'] = (joint_df_unique['kmeans_labels'] == cell_label).astype(int)
         joint_df_uniquecell = joint_df_unique[joint_df_unique['is_cell'] == 1]
@@ -523,12 +525,6 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
     logger.info("cell atac metrics count...")
 
     n_cells = len(joint_cb_list)
-    logger.info(f"Estimated number of cells : {n_cells}")
-    logger.info(f'Mean raw read pairs per cell : {int(qc["Sequencing"]["Sequenced read pairs"]/n_cells)}')
-    logger.info(f"Fraction of high-quality fragments in cells : {cell_merged_df['fragments_num'].sum()/merged_df['fragments_num'].sum():.2%}")
-    logger.info(f"Fraction of transposition events in peaks in cells : {cell_merged_df['events_overlap_peak'].sum() / cell_merged_df['events_all'].sum():.2%}")
-    logger.info(f"Median high-quality fragments per cell : {int(cell_merged_df['fragments_num'].median())}")
-
     qc["Cells"]["Estimated number of cells"] = n_cells
     qc["Cells"]["Mean raw read pairs per cell"] = int(qc["Sequencing"]["Sequenced read pairs"]/n_cells)
     qc["Cells"]["Fraction of high-quality fragments in cells"] = cell_merged_df['fragments_num'].sum()/merged_df['fragments_num'].sum()
@@ -537,12 +533,6 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
     qc["Cells"]["Median high-quality fragments in peaks per cell"] = int(cell_merged_df['fragments_num_overlap_peaks'].median())
 
     # ---------------atac Targeting Count---------------
-    logger.info(f"Number of peaks : {len(peaks)}")
-    logger.info(f"Fraction of genome in peaks : {peakuniqlen/genomelen}")
-    logger.info(f"TSS enrichment score : {max_value/min_value}")
-    logger.info(f"Fraction of high-quality fragments overlapping TSS : {atac.uns['frac_overlap_TSS']:.2%}")
-    logger.info(f"Fraction of high-quality fragments overlapping peaks : {cell_merged_df['fragments_num_overlap_peaks'].sum()/cell_merged_df['fragments_num'].sum():.2%}")
-
     qc["Targeting"]["Number of peaks"] = len(peaks)
     qc["Targeting"]["Fraction of genome in peaks"] = peakuniqlen/genomelen
     qc["Targeting"]["TSS enrichment score"] = max_value/min_value
@@ -628,9 +618,12 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         median = int(np.mean(medians))
         median_sampling.append(median)
 
-    median_sampling.pop()
+    frac_1_median = int(median_sampling[-1])
     median_frag = int(cell_merged_df['fragments_num'].median())
-    median_fragments_list = [0] + median_sampling + [median_frag]
+    k = median_frag / frac_1_median
+    median_downsample = [int(x * k) for x in median_sampling]
+    median_downsample.pop()
+    median_fragments_list = [0] + median_downsample + [median_frag]
     mean_reads_list = [0] + [int(qc["Sequencing"]["Sequenced read pairs"]/n_cells * float(p))for p in n_cols_key]
     percentage_list = [0] + n_cols_key
 
@@ -723,10 +716,10 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
             "{bgzippath} -c {atacname}_fragments_sort.tsv > {atacname}_fragments.tsv.gz; "
             "{tabixpath} -p bed {atacname}_fragments.tsv.gz && rm {atacname}_fragments.tsv {atacname}_fragments_sort.tsv {atacname}_raw_fragments.tsv.gz"
             ).format(step3dir=step3dir, atacname=atacname, memory=memory, gunzippath=gunzippath, sortbedpath=sortbedpath, bgzippath=bgzippath, tabixpath=tabixpath)
-        # run(cmd, shell=True)
+        run(cmd, shell=True)
         logger.info("sort fragments & creat index end!")
 
-    # os.remove(fragments_bed)
-    # os.remove(fragments_inpeakbed)
-    # os.remove(fragments_inpeak_uniq)
+    os.remove(fragments_bed)
+    os.remove(fragments_inpeakbed)
+    os.remove(fragments_inpeak_uniq)
 

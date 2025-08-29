@@ -82,7 +82,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     data_summary["Joint"][1]["left"][0]["data"]["Sample description"] = rawname
     data_summary["Joint"][1]["left"][0]["data"]["Pipeline version"] = "seekarctools " + gex_summary["__version__"]
     data_summary["Joint"][1]["left"][0]["data"]["Reference path"] = atac_summary["atac"]["refpath"].split('/')[-1]
-    data_summary["Joint"][1]["left"][0]["data"]["Chemistry"] = atac_summary["stat"]["chemistry"]
+    data_summary["Joint"][1]["left"][0]["data"]["Chemistry"] = gex_summary["stat"]["chemistry"]
     data_summary["Joint"][1]["left"][0]["data"]["Include introns"] = gex_summary["include_introns"]
     data_summary["Joint"][1]["right"][0]["data"]["Feature linkages detected"] = f'{feature_link:,}'
     data_summary["Joint"][1]["right"][0]["data"]["Linked genes"] = f'{link_gene:,}'
@@ -97,7 +97,6 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     # joint: left_atac cluster riget_gex cluster
     atacdir = os.path.dirname(atacjson)
     gex_tsnefile = os.path.join(atacdir, 'step4', 'gex_tsne_umi.xls')
-    # assert os.path.exists(gex_tsnefile), f'{gex_tsnefile} not found!'
     if not os.path.exists(gex_tsnefile):
         logger.info(f"Warning : The path of '{gex_tsnefile}' is not exists.")
         gex_tsne1 = []
@@ -108,7 +107,6 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
         gex_tsne1, gex_tsne2, gex_depth, gex_cluster = get_gex_tsne(gex_tsnefile)
 
     atac_tsnefile = os.path.join(atacdir, 'step4', 'atac_tsne_umi.xls')
-    # assert os.path.exists(atac_tsnefile), f'{atac_tsnefile} not found!'
     if not os.path.exists(atac_tsnefile):
         logger.info(f"Warning : The path of '{atac_tsnefile}' is not exists.")
         atac_tsne1 = []
@@ -136,7 +134,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     data_summary["Rna"][0]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["Rna"][0]["right"][0]["data"]["GEX Median genes per cell"] = f'{gex_summary["cells"]["Median Genes per Cell"]:,}'
     data_summary["Rna"][0]["right"][0]["data"]["ATAC Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
-    # rna: left_Sequencing riget_Saturation tu
+    # rna: left_Sequencing riget_Saturation
     data_summary["Rna"][1]["left"][0]["data"]["Number of Reads"] = f'{gex_summary["stat"]["total"]:,}'
     data_summary["Rna"][1]["left"][0]["data"]["Valid Barcode"] = f'{gex_summary["stat"]["valid"]/gex_summary["stat"]["total"]:.2%}'
     data_summary["Rna"][1]["left"][0]["data"]["Sequencing Saturation"] = f'{gex_summary["cells"]["Sequencing Saturation"]:.2%}'
@@ -150,7 +148,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     # data_summary["Rna"][1]["left"][0]["data"]["Reads with Linker"] = f'{gex_summary["stat"]["seq_17L19ME"]/gex_summary["stat"]["total"]:.2%}'
     data_summary["Rna"][1]["right"][0]["data"]["x"] = [0, ] + gex_summary["downsample"]["Reads"]
     data_summary["Rna"][1]["right"][0]["data"]["y"] = [0, ] + gex_summary["downsample"]["saturation"]
-    # rna: left_cells riget_Median Genes tu
+    # rna: left_cells riget_Median Genes
     data_summary["Rna"][2]["left"][0]["data"]["Estimated Number of Cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["Rna"][2]["left"][0]["data"]["Fraction Reads in Cells"] = f'{gex_summary["cells"]["Fraction Reads in Cells"]:.2%}'
     data_summary["Rna"][2]["left"][0]["data"]["Mean Reads per Cell"] = f'{gex_summary["cells"]["Mean Reads per Cell"]:,}'
@@ -168,7 +166,6 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
 
     # diff
     diff_table = os.path.join(atacdir, 'step4', 'gex_FindAllMarkers.xls')
-    # assert os.path.exists(diff_table), f'{diff_table} not found!'
     if not os.path.exists(diff_table):
         logger.info(f"Warning : The path of '{diff_table}' is not exists.")
     else:
@@ -179,7 +176,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     data_summary["ATAC"][0]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["ATAC"][0]["right"][0]["data"]["GEX Median genes per cell"] = f'{gex_summary["cells"]["Median Genes per Cell"]:,}'
     data_summary["ATAC"][0]["right"][0]["data"]["ATAC Median high-quality fragments per cell"] = f'{atac_summary["atac"]["Cells"]["Median high-quality fragments per cell"]:,}'
-    # atac: left_Sequencing riget_median_fragments tu
+    # atac: left_Sequencing riget_median_fragments
     data_summary["ATAC"][1]["left"][0]["data"]["Sequenced read pairs"] = f'{atac_summary["atac"]["Sequencing"]["Sequenced read pairs"]:,}'
     data_summary["ATAC"][1]["left"][0]["data"]["Valid barcodes"] = f'{atac_summary["atac"]["Sequencing"]["Valid barcodes"]:.2%}'
     data_summary["ATAC"][1]["left"][0]["data"]["Too short"] = f'{atac_summary["atac"]["Sequencing"]["Too short"]:,}'
@@ -189,7 +186,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     data_summary["ATAC"][1]["left"][0]["data"]["Percent duplicates"] = f'{atac_summary["atac"]["Sequencing"]["Percent duplicates"]:.2%}'
     data_summary["ATAC"][1]["right"][0]["data"]["x"] = atac_summary["atac"]["median"]["mean_reads"]
     data_summary["ATAC"][1]["right"][0]["data"]["y"] = atac_summary["atac"]["median"]["median_fragments"]
-    # atac: left_cells riget_peaks targeting tu
+    # atac: left_cells riget_peaks targeting
     data_summary["ATAC"][2]["left"][0]["data"]["Estimated number of cells"] = f'{atac_summary["atac"]["Cells"]["Estimated number of cells"]:,}'
     data_summary["ATAC"][2]["left"][0]["data"]["Mean raw read pairs per cell"] = f'{atac_summary["atac"]["Cells"]["Mean raw read pairs per cell"]:,}'
     data_summary["ATAC"][2]["left"][0]["data"]["Fraction of high-quality fragments in cells"] = f'{atac_summary["atac"]["Cells"]["Fraction of high-quality fragments in cells"]:.2%}'
@@ -200,7 +197,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     data_summary["ATAC"][2]["right"][0]["data"]["y1"] = atac_summary["atac"]["peaks_target"]["nocell_frac"]
     data_summary["ATAC"][2]["right"][0]["data"]["x2"] = atac_summary["atac"]["peaks_target"]["cell_fragments"]
     data_summary["ATAC"][2]["right"][0]["data"]["y2"] = atac_summary["atac"]["peaks_target"]["cell_frac"]
-    # atac: left_targeting riget_tss tu
+    # atac: left_targeting riget_tss
     data_summary["ATAC"][3]["left"][0]["data"]["Number of peaks"] = f'{atac_summary["atac"]["Targeting"]["Number of peaks"]:,}'
     data_summary["ATAC"][3]["left"][0]["data"]["Fraction of genome in peaks"] = f'{atac_summary["atac"]["Targeting"]["Fraction of genome in peaks"]:.2%}'
     data_summary["ATAC"][3]["left"][0]["data"]["TSS enrichment score"] = f'{atac_summary["atac"]["Targeting"]["TSS enrichment score"]:.2f}'
@@ -208,7 +205,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
     data_summary["ATAC"][3]["left"][0]["data"]["Fraction of high-quality fragments overlapping peaks"] = f'{atac_summary["atac"]["Targeting"]["Fraction of high-quality fragments overlapping peaks"]:.2%}'
     data_summary["ATAC"][3]["right"][0]["data"]["x"] = atac_summary["atac"]["tss"]["position"]
     data_summary["ATAC"][3]["right"][0]["data"]["y"] = atac_summary["atac"]["tss"]["score"]
-    # atac: left_mapping riget_insert tu
+    # atac: left_mapping riget_insert
     data_summary["ATAC"][4]["left"][0]["data"]["Confidently mapped read pairs"] = f'{atac_summary["atac"]["Mapping"]["Confidently mapped read pairs"]:.2%}'
     data_summary["ATAC"][4]["left"][0]["data"]["Unmapped read pairs"] = f'{atac_summary["atac"]["Mapping"]["Unmapped read pairs"]:.2%}'
     data_summary["ATAC"][4]["left"][0]["data"]["Non-nuclear read pairs"] = f'{atac_summary["atac"]["Mapping"]["Non-nuclear read pairs"]:.2%}'

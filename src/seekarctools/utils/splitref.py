@@ -121,10 +121,6 @@ def new_gtf(gtf, split_point_dict, outdir):
                 fh.write(line)
     logger.info(f"new gtf: {filename}")
 
-# @click.command()
-# @click.option("-f", "--fa", required=True)
-# @click.option("-g", "--gtf", required=True)
-# @click.option("-o", "--outdir", required=True)
 def split_ref(fa, gtf, outdir):
     assert os.path.abspath(outdir)!=os.path.dirname(os.path.abspath(fa)), f"output dir should not be same as input file for fa: {os.path.abspath(outdir)}"
     assert os.path.abspath(outdir)!=os.path.dirname(os.path.abspath(gtf)), f"output dir should not be same as input file for gtf: {os.path.abspath(outdir)}"

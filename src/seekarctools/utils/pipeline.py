@@ -7,21 +7,20 @@ from xopen import xopen
 
 class Reader(Process):
     """
-    读取paired fastq
+    Read paired fastq
     """
     def __init__(self, file1:str, file2:str, connections:multiprocessing.connection, queue:Queue, buffer_size:int):
-        """初始化读入进程
-
+        """
+        Initialize the reading process
         Args:
             file1: read1 fastq file
             file2: read2 fastq file
-            connections: 
-            queue: 存放空闲工作进程index的队列
-            buffer_size: 读取fastq时的buffer大小
+            connections:
+            queue: queue for storing the index of idle worker processes
+            buffer_size: buffer size when reading fastq
         
         Returns:
-            Reader对象
-
+            Reader object
         """
         super().__init__()
         self.file1 = file1
@@ -53,13 +52,14 @@ class Reader(Process):
 
 class Writer:
     """
-    处理输出内容
+    Process output content
     """
     def __init__(self, file:str, file_multi:str, paired_out:bool=False):
-        """输出处理好的序列
+        """
+        Output processed sequences
         Args:
             file: read2 fastq file
-            file_muti: 不能确定barcode的fastq文件名称
+            file_muti: fastq file name for reads with undetermined barcode
         """
         self.paired_out = paired_out
 
@@ -113,7 +113,7 @@ class Writer:
             self._fh_multi2.close()
 
 class Worker(Process):
-    """工作进程类
+    """
     """
     def __init__(self, id_, read_pipe, write_pipe, need_work_queue, func, paired_out=False):
         """
@@ -162,7 +162,6 @@ class Worker(Process):
         except Exception as e:
             self.write_pipe.send(-2)
             raise e
-
 
 class Pipeline:
     def __init__(self, func, fq1, fq2, fqout, fqout_multi, core, stat=None, paired_out=False, buffer_size=16*1024**2):

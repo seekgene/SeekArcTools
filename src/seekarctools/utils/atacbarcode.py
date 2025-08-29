@@ -255,18 +255,23 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
                 else:
                     _alt = "M"
 
-                # r2.name = "_".join([barcode_new, umi, _alt, r2.name])
-                # r1.name = "_".join([barcode_new, umi, _alt, r1.name])
-
                 r1_name = "_".join([barcode_new, umi, _alt, r1.name])
                 r2_name = "_".join([barcode_new, umi, _alt, r2.name])
-                if len(r1) <= 50:
-                    r1_seq = r1.sequence
-                    r1_qua = r1.qualities
+                # cut linker
+                if (not use_short_read):
+                    if len(r1.sequence) < 44:
+                        stat_Dict["too_short"] += 1
+                        continue
+                r1_sequence = r1.sequence[43:]
+                r1_qualities = r1.qualities[43:]
+
+                if len(r1_sequence) <= 50:
+                    r1_seq = r1_sequence
+                    r1_qua = r1_qualities
                     re1 = dnaio.Sequence(name = r1_name, sequence = r1_seq, qualities = r1_qua)
                 else:
-                    r1_seq = r1.sequence[:50]
-                    r1_qua = r1.qualities[:50]
+                    r1_seq = r1_sequence[:50]
+                    r1_qua = r1_qualities[:50]
                     re1 = dnaio.Sequence(name = r1_name, sequence = r1_seq, qualities = r1_qua)
                 if len(r2) <= 50:
                     r2_seq = r2.sequence
@@ -276,6 +281,11 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
                     r2_seq = r2.sequence[:50]
                     r2_qua = r2.qualities[:50]
                     re2 = dnaio.Sequence(name = r2_name, sequence = r2_seq, qualities = r2_qua)
+
+                if (not use_short_read) or len(re1) == 0 or len(re2) == 0:
+                    if len(re1) < ATAC_R1_MINLEN or len(re2) < ATAC_R2_MINLEN:
+                        stat_Dict["too_short"] += 1
+                        continue
                 outfh.write(re1, re2)
             if is_correct:
                 stat_Dict["B_corrected"] += 1
@@ -310,8 +320,7 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
     #parse r1 structure
     r1_structure = parse_structure(structure)
     
-    #get wl dict for bc/linker
-    # 当barcode或linker为空时，返回空字典
+    #get wl dict for bc/linker, When barcode or linker is empty, return an empty dict
     barcode_wl_dict = read_file(barcode)
     linker_wl_dict = read_file(linker)
     match_type_dict = {ind: val for ind, val in enumerate(match_type)}
@@ -384,7 +393,7 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
                 multi_stat["total"] += 1
                 final_barcode = None
                 
-                bc_old, r2_candidate, umi, r2_name = r2.name.split("_", 3)
+                bc_old, r2_candidate, umi, r2name = r2.name.split("_", 3)
                 r2_candidate = r2_candidate.split(":")
                 
                 read_num = 0
@@ -401,7 +410,6 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
                     
                 multi_stat["valid"] += 1
                 stat.data["stat"]["valid"] += 1
-                # stat.data["barcode_count"][_] += 1
 
                 flag, r1, r2 = adapter_filter.filter(r1, r2)
                 if flag:
@@ -416,10 +424,41 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
 
                 alt_l = [str(i)+o for i, (o,n) in enumerate(zip(bc_old, final_barcode)) if o != n]
                 _alt = "".join([alt for alt in alt_l])
-                r2.name = "_".join([final_barcode, umi, _alt, r2_name])
+                r2_name = "_".join([final_barcode, umi, _alt, r2name])
+                r1name = r2name.replace(' 2:',' 1:')
+                r1_name = "_".join([final_barcode, umi, _alt, r1name])
 
-                r1.name = r2.name
-                f.write(r1, r2)
+                if (not use_short_read):
+                    if len(r1.sequence) < 44:
+                        multi_stat["too_short"] += 1
+                        stat.data["stat"]["too_short"] += 1
+                        continue
+                r1_sequence = r1.sequence[43:]
+                r1_qualities = r1.qualities[43:]
+
+                if len(r1_sequence) <= 50:
+                    r1_seq = r1_sequence
+                    r1_qua = r1_qualities
+                    re1 = dnaio.Sequence(name = r1_name, sequence = r1_seq, qualities = r1_qua)
+                else:
+                    r1_seq = r1_sequence[:50]
+                    r1_qua = r1_qualities[:50]
+                    re1 = dnaio.Sequence(name = r1_name, sequence = r1_seq, qualities = r1_qua)
+                if len(r2) <= 50:
+                    r2_seq = r2.sequence
+                    r2_qua = r2.qualities
+                    re2 = dnaio.Sequence(name = r2_name, sequence = r2_seq, qualities = r2_qua)
+                else:
+                    r2_seq = r2.sequence[:50]
+                    r2_qua = r2.qualities[:50]
+                    re2 = dnaio.Sequence(name = r2_name, sequence = r2_seq, qualities = r2_qua)
+
+                if (not use_short_read) or len(re1) == 0 or len(re2) == 0:
+                    if len(re1) < ATAC_R1_MINLEN or len(re2) < ATAC_R2_MINLEN:
+                        multi_stat["too_short"] += 1
+                        stat.data["stat"]["too_short"] += 1
+                        continue
+                f.write(re1, re2)
 
         with open(json_multi, "w") as fh:
             json.dump(multi_stat, fp=fh, indent=4)

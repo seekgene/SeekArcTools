@@ -18,13 +18,12 @@ import shutil
 
 # setup logger
 logger.remove()
-if os.environ.get("seeksoultools_debug", "False")=="True":
+if os.environ.get("seekarctools_debug", "False")=="True":
     logger.info("debug: True")
     logger.add(sys.stderr, level="DEBUG")
 else:
     logger.info("debug: False")
     logger.add(sys.stderr, level="INFO")
-
 
 def check_path(path):
     if not os.path.exists(path):
@@ -53,16 +52,15 @@ def hamming_distance(s1, s2):
     return len([(i, j) for i, j in zip(s1, s2) if i != j])
 
 def read_gtf(gtf):
-    """从gtf中获取gene_id和Symbol的对应关系
-    1. 尝试从gene、transcript和exon行，获取对应关系
-    2. 尝试对线粒体Symbol加MT-前缀
-    3. Symbol重复时，并不会做处理
+    """
+    Get the mapping between gene_id and Symbol from gtf
+    1. Try to obtain the mapping from gene, transcript, and exon lines
+    2. Try to add the MT- prefix to mitochondrial Symbols
+    3. No handling for duplicate Symbols
     """
     
     gene_list = []
     mt_regex = re.compile("^(MT|mt|Mt)-")
-    # gene_id_regex = re.compile("gene_id \"([A-Za-z0-9_\.\-\:/\ ()]+)\"") # '\";'  ???
-    # gene_name_regex = re.compile("gene_name \"([A-Za-z0-9_\.\-\:/\ ()]+)\"")
     gene_id_regex = re.compile(r'gene_id "(.*?)";')
     gene_name_regex = re.compile(r'gene_name "(.*?)";')
     id_names_dict = {}
@@ -72,7 +70,6 @@ def read_gtf(gtf):
             if line.startswith("#"): continue
             tmp = line.strip().split("\t")
 
-            # 处理gene，transcript和exon行
             if tmp[2] in ("gene", "transcript", "exon"):
                 gene_id = gene_id_regex.search(tmp[-1])
                 if not gene_id:
@@ -101,23 +98,24 @@ def read_gtf(gtf):
     return [[g, id_names_dict[g]] for g in gene_list]
 
 def parse_structure(string:str) -> tuple:
-    """解析接头结构
+    """
+    Parse adapter structure
 
-    使用字母B、L、U、X和T以及数字表示reads结构。
-    B表示barcode部分碱基；
-    L表示linker部分碱基；
-    U表示umi部分碱基；
-    X表示任意碱基，用于占位；
-    T表示T碱基；
-    字母后数字表示碱基长度。
+    Use letters B, L, U, X, and T along with numbers to represent the read structure.
+    B represents the base of the barcode portion;
+    L represents the base of the linker portion;
+    U represents the base of the UMI portion;
+    X represents any base, used as a placeholder;
+    T represents the T base;
+    The number following a letter indicates the length of the bases.
 
     Args:
-        string: 接头结构描述
+        string: adapter structure description
 
     Returns:
-        返回二维tuple,内容为按顺序的各部分结构和长度。
-        例如：
-            当string是B8L8B8L10B8U8,返回:
+        Returns a two-dimensional tuple, containing the structure and length of each part in order.
+        For example:
+            When string is B8L8B8L10B8U8, returns:
             (('B', 8), ('L', 8), ('B', 8), ('L', 10), ('B', 8), ('U', 8))
     """
     regex = re.compile(r'([BLUXT])(\d+)')
@@ -125,9 +123,9 @@ def parse_structure(string:str) -> tuple:
     return tuple([(_[0], int(_[1])) for _ in groups])
 
 def read_file(file_list: list) -> dict:
-    """准备白名单set
-        Args:
-            file_list: 每段白名单文件的路径
+    """Prepare whitelist set
+    Args:
+        file_list: path to each whitelist file
     """
     wl_dict = dict()
     for i, wl_file in enumerate(file_list):
@@ -143,9 +141,8 @@ def read_file(file_list: list) -> dict:
         wl_dict[i] = white_list
     return wl_dict
 
-
 def get_new_bc(bc:str, white_list:set, distance:int)->set:
-    """返回原始barcode各位置错配后的set与白名单set的交集"""
+    """Return the intersection set between the set of original barcodes with mismatches at each position and the whitelist set"""
 
     if distance == 1:
         BASE_LIST = ["T", "C", "G", "A"]
@@ -158,7 +155,6 @@ def get_new_bc(bc:str, white_list:set, distance:int)->set:
                 mm_dict.update({ bc[:i] + base + bc[i+1:]:f"{i}{base}" for base in BASE_LIST if base!=c })
                 
         bc_set = set(mm_dict.keys()).intersection(white_list)
-        # return {k: mm_dict[k] for k in bc_set}
     else:
         bc_dict = defaultdict(set)
         for bc_true in white_list:
@@ -174,23 +170,19 @@ def get_new_bc(bc:str, white_list:set, distance:int)->set:
     return bc_set
 
 class AdapterFilter:
-    """过滤接头"""
+    """Filter Adapters"""
     def __init__(self, adapter1:list=[], adapter2:list=[],):
-        self.adapter1 = [BackAdapter(sequence=_, min_overlap=10) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=7) for _, p in adapter1]
-        self.adapter2 = [BackAdapter(sequence=_, min_overlap=10) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=10) for _, p in adapter2]
+        self.adapter1 = [BackAdapter(sequence=_, min_overlap=10, read_wildcards=True) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=5, read_wildcards=True) for _, p in adapter1]
+        self.adapter2 = [BackAdapter(sequence=_, min_overlap=10, read_wildcards=True) if p=="3" else RightmostFrontAdapter(sequence=_, min_overlap=10, read_wildcards=True) for _, p in adapter2]
     
     def filter(self, r1=None, r2=None) -> tuple:
         flag = False
         if r1 and self.adapter1:
-            # print("######")
-            # print(len(r1))
-            # print(r1.sequence)
             for _ in self.adapter1:
                 m = _.match_to(r1.sequence)
                 if m:
                     flag = True
                     r1 =  m.trimmed(r1)
-                    # print(r1.sequence)
         if r2 and self.adapter2:
             for _ in self.adapter2:
                 m = _.match_to(r2.sequence)
@@ -200,7 +192,7 @@ class AdapterFilter:
         return flag, r1, r2
 
 class QcStat:
-    """汇总统计"""
+    """summary statistics"""
     def __init__(self):
         self.data = { }
 

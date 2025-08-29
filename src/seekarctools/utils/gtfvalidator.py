@@ -1,7 +1,7 @@
 import sys
 import re
 from loguru import logger
-import click
+# import click
 
 def gene_gen(gtf):
     with open(gtf) as fh:

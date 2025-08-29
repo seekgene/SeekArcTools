@@ -362,7 +362,7 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
                 flag, r1, r2 = adapter_filter.filter(r1, r2)
                 if flag:
                     if (not use_short_read) or len(r1) == 0 or len(r2) == 0:
-                        if len(r1) < R1_MINLEN or len(r2) < R2_MINLEN:
+                        if len(r2) < R2_MINLEN:
                             stat_Dict["too_short"] += 1
                             continue
                     else:
@@ -379,6 +379,10 @@ def process_barcode(fq1, fq2, fq_out, fqout_multi, r1_structure, shift, shift_pa
 
                 r2.name = "_".join([barcode_new, umi, _alt, r2.name])
                 r1.name = "_".join([barcode_new, umi, _alt, r1.name])
+                if (not use_short_read) or len(r2) == 0:
+                    if len(r2) < R2_MINLEN:
+                        stat_Dict["too_short"] += 1
+                        continue
                 outfh.write(r1, r2)
             if is_correct:
                 stat_Dict["B_corrected"] += 1
@@ -413,8 +417,7 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
     #parse r1 structure
     r1_structure = parse_structure(structure)
     
-    #get wl dict for bc/linker
-    # 当barcode或linker为空时，返回空字典
+    #get wl dict for bc/linker, When barcode or linker is empty, return an empty dict
     barcode_wl_dict = read_file(barcode)
     linker_wl_dict = read_file(linker)
     match_type_dict = {ind: val for ind, val in enumerate(match_type)}
@@ -505,7 +508,6 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
                     
                 multi_stat["valid"] += 1
                 stat.data["stat"]["valid"] += 1
-                # stat.data["barcode_count"][_] += 1
                 if len(r1.sequence) > 30:
                     seq_17l_3me = r1.sequence[:20]
                     if hamming_distance(seq_17l_3me, 'CGTCCGTCGTTGCTCGTAGA') <=2:
@@ -515,7 +517,7 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
                 flag, r1, r2 = adapter_filter.filter(r1, r2)
                 if flag:
                     if (not use_short_read) or len(r1) == 0 or len(r2) == 0:
-                        if len(r1) < R1_MINLEN or len(r2) < R2_MINLEN:
+                        if len(r2) < R2_MINLEN:
                             multi_stat["too_short"] += 1
                             stat.data["stat"]["too_short"] += 1
                             continue
@@ -526,8 +528,14 @@ def barcode_main(fq1:list, fq2:list, samplename: str, outdir:str,
                 alt_l = [str(i)+o for i, (o,n) in enumerate(zip(bc_old, final_barcode)) if o != n]
                 _alt = "".join([alt for alt in alt_l])
                 r2.name = "_".join([final_barcode, umi, _alt, r2_name])
+                r1_name = r2_name.replace(' 2:',' 1:')
+                r1.name = "_".join([final_barcode, umi, _alt, r1_name])
 
-                r1.name = r2.name
+                if (not use_short_read) or len(r2) == 0:
+                    if len(r2) < R2_MINLEN:
+                        multi_stat["too_short"] += 1
+                        stat.data["stat"]["too_short"] += 1
+                        continue
                 f.write(r1, r2)
 
         with open(json_multi, "w") as fh:
