@@ -235,6 +235,63 @@ class QcStat:
         with open(path, 'w') as fh:
             json.dump(tmp, fh, indent=4)
 
+def extend_and_merge_bed(bed_file, d_ref, extension=2000):
+    """
+    Process the BED file: extend each interval by ±2000bp, confine within chromosome boundaries, merge overlapping intervals, and return the total length.
+
+    Parameters:
+    - bed_file: str, Path to the input BED file
+    - d_ref: dict, A dictionary mapping chromosome names to their lengths, e.g., {'chr1': 248956422, 'chr2': 242193529, ...}
+    - eextension: int, Number of base pairs for extension, default 2000
+
+    Returns:
+    - total_length: int, Total length of all non-overlapping intervals
+    - merged_intervals: list of tuples, List of merged intervals in the format [(chrom, start, end), ...]
+    """
+    intervals_by_chrom = {}
+
+    with open(bed_file, 'r') as f:
+        for line in f:
+            if line.startswith('#') or line.strip() == '':
+                continue
+            parts = line.strip().split()
+            chrom = parts[0]
+            start = int(parts[1])
+            end = int(parts[2])    # 0-based, end is exclusive
+
+            if chrom not in d_ref:
+                raise ValueError(f"Chromosome {chrom} is not defined in the reference genome dictionary d_ref.")
+            extended_start = max(1, start - extension)
+            extended_end = min(d_ref[chrom], end + extension)
+            actual_start = max(0, start - extension)
+            actual_end = min(d_ref[chrom], end + extension)
+
+            if chrom not in intervals_by_chrom:
+                intervals_by_chrom[chrom] = []
+            intervals_by_chrom[chrom].append((actual_start, actual_end))
+
+    total_length = 0
+    merged_intervals = []
+
+    for chrom in sorted(intervals_by_chrom.keys()):
+        intervals = sorted(intervals_by_chrom[chrom])
+        if not intervals:
+            continue
+        current_start, current_end = intervals[0]
+
+        for start, end in intervals[1:]:
+            if start <= current_end:
+                current_end = max(current_end, end)
+            else:
+                merged_intervals.append((chrom, current_start, current_end))
+                total_length += current_end - current_start
+                current_start, current_end = start, end
+
+        merged_intervals.append((chrom, current_start, current_end))
+        total_length += current_end - current_start
+
+    return total_length, merged_intervals
+
 
 def check_cores(
     requested_cores: int):

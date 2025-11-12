@@ -6,6 +6,7 @@ from collections import defaultdict
 from subprocess import run
 import psutil
 import os
+import sys
 import json
 import gzip
 import scipy.io
@@ -13,6 +14,7 @@ import scanpy as sc
 from sklearn.cluster import KMeans
 from sklearn.neighbors import NearestCentroid
 from ..utils.helper import logger
+from ..utils.helper import extend_and_merge_bed
 from ..utils.wrappers import cmd_execute
 from ..utils import countUtil
 
@@ -55,7 +57,7 @@ def log_transform(x, alpha=0.1):
 
 def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str, 
             bedtoolspath:str="bedtools", macs3app:str="macs3", sortbedpath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", sortpath:str="sort", 
-            core:int=4, qvalue:float=0.05, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, broad=False, broad_cutoff:float=0.1, 
+            core:int=4, qvalue:float=0.001, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, broad=False, broad_cutoff:float=0.1, 
             min_atac_count:int=None, min_gex_count:int=None, retry=False, **kwargs):
     gexstep3dir = os.path.join(gexoutdir, "step3")
     gexname = f"{samplename}_E"
@@ -261,7 +263,8 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
     run(cmd, shell=True)
     logger.info(f'Parameter : qvalue={qvalue}, nolambda={nolambda}, shift={snapshift}, extsize={extsize}, min_len={min_len}, call_broad_peaks={broad}, broad_cutoff={broad_cutoff}, n_jobs={core}')
     if broad:
-        cmd = ("{macs3app} callpeak -t {fragments_bed} -f BED -g {genomelen} --broad -n {atacname} --outdir {step3dir} -q {qvalue} --broad-cutoff {broad_cutoff} --shift {snapshift} --extsize {extsize} --min-length {min_len} --nomodel"
+        # snap.tl.macs3(atac, call_broad_peaks=True, broad_cutoff=broad_cutoff, qvalue=qvalue, nolambda=nolambda, shift=snapshift, extsize=extsize, min_len=min_len, blacklist=None, n_jobs=core)
+        cmd = ("{macs3app} callpeak -t {fragments_bed} -f FRAG -g {genomelen} --broad -n {atacname} --outdir {step3dir} -q {qvalue} --broad-cutoff {broad_cutoff} --shift {snapshift} --extsize {extsize} --min-length {min_len} --nomodel"
             ).format(macs3app=macs3app, fragments_bed=fragments_bed, genomelen=genomelen, atacname=atacname, step3dir=step3dir, qvalue=qvalue, broad_cutoff=broad_cutoff, snapshift=snapshift, extsize=extsize, min_len=min_len)
         run(cmd, shell=True)
         broad_peaks_file = os.path.join(step3dir, atacname+"_peaks.broadPeak")
@@ -311,6 +314,10 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
 
     logger.info("call peak end!")
 
+    # extend peak
+    extend_peak_len, merged_intervals = extend_and_merge_bed(peakuniq, size_dict, extension=2000)
+    extend_ratio = extend_peak_len / genomelen
+    logger.info(f"Fraction of genome in extend peak : {extend_ratio}")
 
     fragments_inpeakbed = os.path.join(step3dir, atacname+"_fragments_inPeaks.bed")
     fragments_inpeak_uniq = os.path.join(step3dir, atacname+"_fragments_inPeaks_uniq.bed")
@@ -429,24 +436,39 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
 
     else:
         df_filter3 = merged_df[(merged_df['gex_umi'] > 1) & (merged_df['events_overlap_peak'] > 1)]
-        df_filter1 = df_filter3[df_filter3['fraction_frag_overlap_peak'] > genome_in_peaks]
+        df_filter1 = df_filter3[df_filter3['fraction_frag_overlap_peak'] > extend_ratio]
         joint_df = df_filter1[['barcode', 'gex_umi', 'events_overlap_peak']]
         joint_df_unique = joint_df.drop_duplicates(subset=['gex_umi', 'events_overlap_peak'])
-        points = log_transform(joint_df_unique[['gex_umi', 'events_overlap_peak']].values)
+
+        log_points = log_transform(joint_df_unique[['gex_umi', 'events_overlap_peak']].values)
+        points = log_points
 
         kmeans = KMeans(n_clusters=2, init='k-means++', n_init=10, max_iter=300)
         kmeans.fit(points)
         labels = kmeans.labels_
         centroids = kmeans.cluster_centers_
+
         if centroids[0].mean() > centroids[1].mean():
             cell_label = 0
             nocell_label = 1
         else:
             cell_label = 1
             nocell_label = 0
+
         joint_df_unique['kmeans_labels'] = labels
         joint_df_unique['is_cell'] = (joint_df_unique['kmeans_labels'] == cell_label).astype(int)
+        joint_df_unique[['log_gex_umi', 'log_events_overlap_peak']] = log_points
         joint_df_uniquecell = joint_df_unique[joint_df_unique['is_cell'] == 1]
+
+        if len(joint_df_uniquecell) > 20000:
+            nocell_centroid = centroids[nocell_label]
+            joint_df_uniquecell['distance_to_nocell'] = (
+                (joint_df_uniquecell['log_gex_umi'] - nocell_centroid[0])**2 +
+                (joint_df_uniquecell['log_events_overlap_peak'] - nocell_centroid[1])**2
+            )
+            joint_df_uniquecell = joint_df_uniquecell.sort_values(by='distance_to_nocell', ascending=False).head(20000)
+            logger.info("joint cell barcode num > 20000, but atuo call cell max num is 20000")
+
         joint_cb_list = list(joint_df_uniquecell['barcode'])
 
     merged_df['is_cell'] = np.where(merged_df['barcode'].isin(joint_cb_list), 1, 0)

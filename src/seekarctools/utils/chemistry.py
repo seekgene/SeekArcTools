@@ -13,7 +13,7 @@ ATAC_R1_MINLEN = 20
 ATAC_R2_MINLEN = 50
 
 CHEMISTRY = {
-    "DD-AG":{
+    "DD_AG":{
         'shift': False,
         'structure': 'B17U12X7',
         'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
@@ -22,7 +22,7 @@ CHEMISTRY = {
         'sc5p': None,
         'match_type': (1,),
     },
-    "DD-AA":{
+    "DD_AA":{
         'shift': False,
         'structure': 'B17U12',
         'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
@@ -30,7 +30,7 @@ CHEMISTRY = {
         'adapter2': [["GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG", "5"], ["GGTGATTAACGATGCATTAGATGTGTATAAGAGACAG","5"], ["CTGTCTCTTATACACATCTACGAGCAACGACGGACG", "3"]], ## SP2-rev zhixiaoling 17L19ME-rev
         'match_type': (1,),
     },
-    "DD5-AG":{
+    "DD5_AG":{
        'shift': False,
         'structure': 'B17U12X13',
         'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),

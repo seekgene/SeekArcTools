@@ -22,7 +22,7 @@ seekarctools arc run \
     --samplename demo \
     --outdir /path/to/outdir \
     --refpath /path/to/reference/GRCh38 \
-    --chemistry DD-AG \
+    --chemistry DD_AG \
     --include-introns \
     --core 16
 ```
@@ -55,7 +55,7 @@ seekarctools arc retry \
 | --atacfq1         | Paths to R1 fastq files of ATAC library                                  |
 | --atacfq2         | Paths to R2 fastq files of ATAC library                                  |
 | --samplename      | Sample name                                                   |
-| --chemistry       | Reagent type. Available options: DD-AG, DD5-AG                                                 |
+| --chemistry       | Reagent type. Available options: DD_AG, DD5_AG                                                 |
 | --outdir          | output directory. Default: ./                                   |
 | --skip_misB       | If enabled, no base mismatch is allowed for barcode. Default is 1.                |
 | --skip_misL       | If enabled, no base mismatch is allowed for linker. Default is 1.                 |
@@ -65,7 +65,7 @@ seekarctools arc retry \
 | --include-introns | When disabled, only exon reads are used for quantification. When enabled, intron reads are also used for quantification. |
 | --refpath         | The path of reference genome.                                             |
 | --star_path       | External STAR software path. If the index in the reference genome is built by another STAR, please specify its path. |
-| --qvalue          | Minimum FDR (q-value) cutoff for peak detection. Default: 0.05.               |
+| --qvalue          | Minimum FDR (q-value) cutoff for peak detection. Default: 0.001.               |
 | --nolambda        | If True, MACS3 will use the background lambda as local lambda. This means MACS3 will not consider the local bias at peak candidate regions. |
 | --snapshift       | MACS3 peak detection shift size. Default: 0.                         |
 | --extsize         | MACS3 peak detection extension size. Default: 400.                       |
@@ -74,7 +74,7 @@ seekarctools arc retry \
 | --broad_cutoff    | Threshold for broad peak calling. Default: 0.1.                          |
 | --min_atac_count  | Cell caller override: define the minimum number of ATAC transposition events in peaks (ATAC counts) for a cell barcode.       |
 | --min_gex_count   | Cell caller override: define the minimum number of GEX UMI counts for a cell barcode.                   |
-| -h，--help        | Show this parameter descriptions.                                                 |
+| -h, --help        | Show this parameter descriptions.                                                 |
 
 ## Output descriptions
 “Here’s the output directory structure: each line represents a file or folder, indicated by “├──”, and the numbers indicate three important output files.

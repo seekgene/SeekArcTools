@@ -45,7 +45,7 @@ def arc(obj, steps):
 @click.option("--skip_multi", "use_multi", is_flag=True, default=True, show_default=True, help="Do not rescue barcode match multi when do correction.")
 @click.option("--skip_len", "use_short_read", is_flag=True, default=False, show_default=True, help="Skip filtering short reads after adapter filter, short reads will be used.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
-@click.option("--chemistry", type=click.Choice(["DD-AG", "DD5-AG", "custom"]), help="DD-AG, DD5-AG.")
+@click.option("--chemistry", type=click.Choice(["DD_AG", "DD5_AG", "custom"]), help="DD_AG, DD5_AG.")
 @click.pass_obj
 def estep1(obj, **kwargs):
     # if kwargs["barcode"]:
@@ -104,7 +104,7 @@ def estep3(obj, **kwargs):
 @click.option("--skip_multi", "use_multi", is_flag=True, default=True, show_default=True, help="Do not rescue barcode match multi when do correction.")
 @click.option("--skip_len", "use_short_read", is_flag=True, default=False, show_default=True, help="Skip filtering short reads after adapter filter, short reads will be used.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
-@click.option("--chemistry", type=click.Choice(["DD-AA", "custom"]), help="DD-AA.")
+@click.option("--chemistry", type=click.Choice(["DD_AA", "custom"]), help="DD_AA.")
 @click.pass_obj
 def astep1(obj, **kwargs):
     # if kwargs["barcode"]:
@@ -137,10 +137,10 @@ def astep2(obj, **kwargs):
 @click.option('--bam', required=True,help='atac. step2/bwa_pe/asample_mem_pe_Sort.bam')
 @click.option("--outdir", default="./step3/", show_default=True, type=click.Path(), help="Output dir.")
 @click.option('--samplename', required=True,help='Sample name.')
-@click.option('--gexoutdir', required=True,help='gex. step3/filtered_feature_bc_matrix/barcodes.tsv.gz')
+@click.option('--gexoutdir', required=True,help='gex.')
 @click.option("--refpath", "refpath", required=True, type=click.Path(exists=True, resolve_path=True), help="Path to reference.")
 @click.option("--core", default=4, show_default=True, help="Set max number of cpus that pipeline might request at the same time.")
-@click.option("--qvalue", default=0.05, show_default=True, help="Minimum FDR (q-value) cutoff for peak detection.")
+@click.option("--qvalue", default=0.001, show_default=True, help="Minimum FDR (q-value) cutoff for peak detection.")
 @click.option("--nolambda", is_flag=True, default=False, show_default=True, help="If True, macs3 will use the background lambda as local lambda. This means macs3 will not consider the local bias at peak candidate regions.")
 @click.option("--snapshift", default=0, show_default=True, help="The shift size in MACS.")
 @click.option("--extsize", default=400, show_default=True, help="The extension size in MACS.")
@@ -215,8 +215,8 @@ def report(obj, **kwargs):
               help="Do not rescue barcode match multi when do correction.")
 @click.option("--skip_len", "use_short_read", is_flag=True, default=False, show_default=True, 
               help="Skip filtering short reads after adapter filter, short reads will be used.")
-@click.option("--chemistry", type=click.Choice(["DD-AG", "DD5-AG", "custom"]), 
-              help="DD-AG, DD5-AG.")
+@click.option("--chemistry", type=click.Choice(["DD_AG", "DD5_AG", "custom"]), 
+              help="DD_AG, DD5_AG.")
 @click.option("--core", default=4, show_default=True,
               help="Set max number of cpus that pipeline might request at the same time.")
 @click.option("--include-introns", "region", is_flag=True, default=False, callback=include_introns_callback, show_default=True,
@@ -227,7 +227,7 @@ def report(obj, **kwargs):
               help="Path to executable STAR aligner.")
 @click.option("--umi_correct_method", type=click.Choice(["cluster", "adjacency", "directional"]), default="adjacency", show_default=True, hidden=True,
               help="cluster, adjacency, directional")
-@click.option("--qvalue", default=0.05, show_default=True, 
+@click.option("--qvalue", default=0.001, show_default=True, 
               help="Minimum FDR (q-value) cutoff for peak detection.")
 @click.option("--nolambda", is_flag=True, default=False, show_default=True, 
               help="If True, macs3 will use the background lambda as local lambda. This means macs3 will not consider the local bias at peak candidate regions.")
@@ -308,7 +308,7 @@ def run(obj, **kwargs):
     os.makedirs(kwargs["outdir"], exist_ok=True)
 
     if "astep1" in obj["steps"]:
-        kwargs["chemistry"] = "DD-AA"
+        kwargs["chemistry"] = "DD_AA"
         from ..utils.atacbarcode import check_atac_options
         chemistry_kwargs = check_atac_options(fq1=kwargs["atacfq1"], fq2=kwargs["atacfq2"], **kwargs)
         kwargs.update(chemistry_kwargs)
@@ -380,7 +380,7 @@ def run(obj, **kwargs):
               help="Set max number of cpus that pipeline might request at the same time.")
 @click.option("--refpath", "refpath", required=True, type=click.Path(exists=True, resolve_path=True),
               help="Path to reference.")
-@click.option("--qvalue", default=0.05, show_default=True, 
+@click.option("--qvalue", default=0.001, show_default=True, 
               help="Minimum FDR (q-value) cutoff for peak detection.")
 @click.option("--nolambda", is_flag=True, default=False, show_default=True, 
               help="If True, macs3 will use the background lambda as local lambda. This means macs3 will not consider the local bias at peak candidate regions.")
