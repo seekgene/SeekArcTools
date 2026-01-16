@@ -470,3 +470,9 @@ def retry(obj, **kwargs):
         cmd_execute(cmd7, check=True)
     else:
         logger.warning(f"rds_file does not exist: {rds_file}, skipping move operation")
+        old_rds_file = os.path.join(kwargs["outdir"], f"{kwargs['samplename']}.rds")
+        rename_rds_file = os.path.join(kwargs["outdir"], f"{kwargs['samplename']}_old.rds")
+        if os.path.exists(old_rds_file):
+            logger.warning(f"Detected RDS files from the previous analysis; renaming {old_rds_file} to {rename_rds_file}")
+            cmd8 = f"mv {old_rds_file} {rename_rds_file}"
+            cmd_execute(cmd8, check=True)
