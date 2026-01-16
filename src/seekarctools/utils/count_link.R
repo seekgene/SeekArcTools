@@ -166,7 +166,7 @@ DefaultAssay(obj) <- "ATAC"
 
 tryCatch({
   obj <- RegionStats(obj, genome = fa_data)
-  obj <- LinkPeaks(object = obj, peak.assay = "ATAC", expression.assay = "RNA")
+  obj <- LinkPeaks(object = obj, peak.assay = "ATAC", expression.assay = "RNA", score_cutoff = 0.01, distance = 1e6)
   saveRDS(obj,file='joint_peak_link_gene.rds')
   # count link
   linked_peaks <- Links(obj)

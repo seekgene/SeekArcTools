@@ -341,7 +341,12 @@ def run(obj, **kwargs):
 
     if "astep4" in obj["steps"]:
         from .astep4 import do_signac
-        do_signac(**kwargs)
+        try:
+            do_signac(**kwargs)
+        except SystemExit as e:
+            logger.warning(f"astep4 (do_signac) execution failed, error code: {e.code}, continuing with subsequent steps...")
+        except Exception as e:
+            logger.warning(f"astep4 (do_signac) execution failed, error message: {str(e)}, continuing with subsequent steps...")
 
     kwargs["outdir"] = os.path.join(sampleoutdir, 'outs')
     from .report_arc import report
@@ -365,8 +370,11 @@ def run(obj, **kwargs):
     cmd_execute(cmd5, check=True)
     cmd6 = f"cp {peakfile} {kwargs['outdir']}"
     cmd_execute(cmd6, check=True)
-    cmd7 = f"mv {rds_file} {kwargs['outdir']}"
-    cmd_execute(cmd7, check=True)
+    if os.path.exists(rds_file):
+        cmd7 = f"mv {rds_file} {kwargs['outdir']}"
+        cmd_execute(cmd7, check=True)
+    else:
+        logger.warning(f"rds_file does not exist: {rds_file}, skipping move operation")
 
 @arc.command(help="Skip the alignment step and rerun astep3. Retry call peaks or cells.")
 @click.pass_obj
@@ -434,7 +442,12 @@ def retry(obj, **kwargs):
     kwargs["atacjson"] = os.path.join(kwargs["outdir"], f"{kwargs['atacname']}_summary.json")
 
     from .astep4 import do_signac
-    do_signac(**kwargs)
+    try:
+        do_signac(**kwargs)
+    except SystemExit as e:
+        logger.warning(f"astep4 (do_signac) execution failed, error code: {e.code}, continuing with subsequent steps...")
+    except Exception as e:
+        logger.warning(f"astep4 (do_signac) execution failed, error message: {str(e)}, continuing with subsequent steps...")
 
     # report
     kwargs["outdir"] = os.path.join(sampleoutdir, 'outs')
@@ -452,5 +465,8 @@ def retry(obj, **kwargs):
     cmd_execute(cmd5, check=True)
     cmd6 = f"cp {peakfile} {kwargs['outdir']}"
     cmd_execute(cmd6, check=True)
-    cmd7 = f"mv {rds_file} {kwargs['outdir']}"
-    cmd_execute(cmd7, check=True)
+    if os.path.exists(rds_file):
+        cmd7 = f"mv {rds_file} {kwargs['outdir']}"
+        cmd_execute(cmd7, check=True)
+    else:
+        logger.warning(f"rds_file does not exist: {rds_file}, skipping move operation")
