@@ -1,5 +1,5 @@
 # SeekArcTools
-Developed by [SeekGene](https://www.seekgene.com/), SeekArcTools is a bioinformatics software suite specifically tailored for processing data from the SeekOne DD Single Cell Multiome (ATAC + RNA) Kit. It independently processes transcriptome and ATAC libraries for tasks such as barcode extraction and correction, alignment, barcode quantification, joint cell identification, and the generation of cell expression matrices. This enables subsequent clustering, differential analysis, and the calculation of gene-peak associations for downstream interpretation.
+SeekArcTools is a software developed by SEEKGENE for processing single-cell ATAC multi-omics data. The software independently processes transcriptome libraries and ATAC libraries for tasks, such as:Barcode extraction and correction, alignment.Quantification of each barcode, joint cell identification, and generation of cell expression matrices for downstream analysis.Enables subsequent clustering and differential analysis, as well as calculation of associations between genes and peaks for downstream interpretation.
 
 ## Installation
 ```

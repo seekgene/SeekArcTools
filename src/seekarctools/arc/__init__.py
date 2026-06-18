@@ -86,7 +86,7 @@ def estep2(obj, **kwargs):
 @click.option("--umi_correct_method", type=click.Choice(["cluster", "adjacency", "directional"]), default="adjacency", show_default=True, help="cluster, adjacency, directional")
 @click.pass_obj
 def estep3(obj, **kwargs):
-    from .estep3 import count, cell_calling
+    from .estep3 import count
     count(**kwargs)
 
 @arc.command(help="ATAC extract cell barcode and umi. cut reads to preserve valid sequences.")

@@ -614,6 +614,8 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
     chunck_count = 0
     for df in csv_reader:
         df = df.loc[df["barcode"].isin(joint_cb_list), :].reset_index(drop=True)
+        if len(df["barcode"]) ==0:
+            continue
         rep = df["reads"]
         df = df.drop(["reads"], axis=1)
         idx = df.index.repeat(rep)
