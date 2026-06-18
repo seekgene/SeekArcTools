@@ -1,5 +1,5 @@
 # SeekArcTools
-SeekArcTools 是由 SEEKGENE（寻因生物）开发的一款用于处理单细胞 ATAC 多组学数据的软件。该软件独立处理转录组文库和 ATAC 文库的任务，例如：Barcode 提取与校正、序列比对。对每个 Barcode 进行定量、联合鉴定细胞，并生成细胞表达矩阵供下游分析使用。支持后续的聚类和差异分析，以及计算基因与 Peak 之间的关联以进行下游解读。
+由 [SeekGene（寻因生物）](https://www.seekgene.com/) 开发的 SeekArcTools 是一款专为处理 SeekOne DD 单细胞多组学（ATAC + RNA）试剂盒数据而定制的生物信息学软件套装。它独立处理转录组和 ATAC 文库，用于执行诸如 Barcode 提取与校正、序列比对、Barcode 定量、联合细胞鉴定，以及生成细胞表达矩阵等任务。这使得后续能够进行聚类、差异分析，以及计算基因与 Peak 之间的关联以供下游解读。
 
 ## 安装
 ```
