@@ -14,13 +14,14 @@ from intervaltree import IntervalTree
 from xopen import xopen
 from .helper import logger, read_gtf, hamming_distance
 
-def count(bam, outdir, gtf, umi_correct_method, **kwargs):
+def count(bam, outdir, gtf, umi_correct_method, ispair=False, **kwargs):
 
     detail_file = os.path.join(outdir, "detail.xls")
     counts_file = os.path.join(outdir, "counts.xls")
     umi_file = os.path.join(outdir, "umi.xls")
 
     logger.info(f"umi correction method selected: {umi_correct_method}")
+    logger.info(f"paired-end UMI counting: {ispair}")
     gtf_tree = create_interval_tree(gtf)
     bam2table(
         bam=bam,
@@ -28,7 +29,8 @@ def count(bam, outdir, gtf, umi_correct_method, **kwargs):
         counts_file=counts_file,
         umi_correct_detail=umi_file,
         umi_correct_method=umi_correct_method,
-        gtf_tree=gtf_tree
+        gtf_tree=gtf_tree,
+        ispair=ispair,
     )
 
     raw_matrix_dir = os.path.join(outdir, "raw_feature_bc_matrix")
@@ -39,7 +41,7 @@ def count(bam, outdir, gtf, umi_correct_method, **kwargs):
     return 
 
 
-def bam2table(bam, detail_file, counts_file, umi_correct_detail, umi_correct_method, gtf_tree):
+def bam2table(bam, detail_file, counts_file, umi_correct_detail, umi_correct_method, gtf_tree, ispair=False):
 
     default_verbosity = pysam.set_verbosity(0)
     sam_file = pysam.AlignmentFile(bam, "rb")
@@ -52,7 +54,7 @@ def bam2table(bam, detail_file, counts_file, umi_correct_detail, umi_correct_met
         fh1.write("\t".join(["cellID", "geneID", "UMI", "Num"]) + "\n")
         fh2.write("\t".join(["cellID", "geneID", "UMINum", "ReadsNum"]) + "\n")
         for barcode, g in groupby(sam_file, key=lambda x: x.qname.split("_", 1)[0]):
-            counts_dict, geneid_umi_dict = umi_count(g, umi_correct_detail_fh, umi_clusterer, gtf_tree)
+            counts_dict, geneid_umi_dict = umi_count(g, umi_correct_detail_fh, umi_clusterer, gtf_tree,ispair=ispair)
             for gene_id in geneid_umi_dict:
                 for umi in geneid_umi_dict[gene_id]:
                     raw_umi_count = geneid_umi_dict[gene_id][umi]
@@ -540,6 +542,9 @@ def calculate_metrics(counts_file, detail_file, filterd_barcodes_file, filterd_f
     for df in csv_reader:
         mapped_reads_total += df["Num"].sum()
         df = df.loc[df["cellID"].isin(barcodes[0]), :].reset_index(drop=True)
+        if len(df["cellID"]) ==0:
+            print(f'df{chunk_count} len = 0')
+            continue
         cell_reads_total += df["Num"].sum()
         rep = df["Num"]
         df = df.drop(["Num"], axis=1)

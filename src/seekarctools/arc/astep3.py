@@ -58,7 +58,8 @@ def log_transform(x, alpha=0.1):
 def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str, 
             bedtoolspath:str="bedtools", macs3app:str="macs3", sortbedpath:str="sort-bed", gunzippath:str="gunzip", bgzippath:str="bgzip", tabixpath:str="tabix", sortpath:str="sort", 
             core:int=4, qvalue:float=0.001, nolambda=False, snapshift:int=0, extsize:int=400, min_len:int=400, broad=False, broad_cutoff:float=0.1, 
-            min_atac_count:int=None, min_gex_count:int=None, retry=False, **kwargs):
+            #min_atac_count:int=None, min_gex_count:int=None, retry=False, **kwargs):
+            min_atac_count:int=None, min_gex_count:int=None, retry=False, keep_mito:bool=False, strict_cell_calling:bool=False, max_cells:int=None, **kwargs):
     gexstep3dir = os.path.join(gexoutdir, "step3")
     gexname = f"{samplename}_E"
     gexjson = os.path.join(gexoutdir, gexname+"_summary.json")
@@ -175,7 +176,9 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
             for line in fh:
                 fields = line.strip().split("\t")
                 chrom, start, end, barcode, reads_count = fields
-                if chrom in ['chrM','M']:
+                #if chrom in ['chrM','M']:
+                #    continue
+                if not keep_mito and chrom in ['chrM', 'M', 'chrMT', 'MT']:
                     continue
                 key = (chrom, start, end, barcode)            
                 if key == prev_key:
@@ -226,6 +229,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         atac = snap.pp.import_data(fragment_file=fragments_file, 
                                 chrom_sizes=size_dict,
                                 min_num_fragments=0)
+
         # atac.write(os.path.join(step3dir, atacname+"_snapatac2_raw.h5ad"))
         os.makedirs('/tmp', exist_ok=True)
         atac.write(os.path.join('/tmp', atacname+"_snapatac2_raw.h5ad"))
@@ -443,7 +447,7 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         log_points = log_transform(joint_df_unique[['gex_umi', 'events_overlap_peak']].values)
         points = log_points
 
-        kmeans = KMeans(n_clusters=2, init='k-means++', n_init=10, max_iter=300)
+        kmeans = KMeans(n_clusters=2, init='k-means++', n_init=10, max_iter=300, random_state=42)
         kmeans.fit(points)
         labels = kmeans.labels_
         centroids = kmeans.cluster_centers_
@@ -460,16 +464,59 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
         joint_df_unique[['log_gex_umi', 'log_events_overlap_peak']] = log_points
         joint_df_uniquecell = joint_df_unique[joint_df_unique['is_cell'] == 1]
 
-        if len(joint_df_uniquecell) > 20000:
+        # post filter by filter_gex_umi
+        filter_gex_umi = kwargs.get("filter_gex_umi")
+        if filter_gex_umi is not None:
+            logger.info(f"Filtering K-Means cells with gex_umi >= {int(filter_gex_umi)}")
+            joint_df_uniquecell = joint_df_uniquecell[joint_df_uniquecell['gex_umi'] >= int(filter_gex_umi)]
+
+        if max_cells is not None and len(joint_df_uniquecell) > max_cells:
             nocell_centroid = centroids[nocell_label]
             joint_df_uniquecell['distance_to_nocell'] = (
                 (joint_df_uniquecell['log_gex_umi'] - nocell_centroid[0])**2 +
                 (joint_df_uniquecell['log_events_overlap_peak'] - nocell_centroid[1])**2
             )
-            joint_df_uniquecell = joint_df_uniquecell.sort_values(by='distance_to_nocell', ascending=False).head(20000)
-            logger.info("joint cell barcode num > 20000, but atuo call cell max num is 20000")
+            joint_df_uniquecell = joint_df_uniquecell.sort_values(by='distance_to_nocell', ascending=False).head(max_cells)
+            logger.info(f"joint cell barcode num > {max_cells}, but auto call cell max num is {max_cells}")
 
         joint_cb_list = list(joint_df_uniquecell['barcode'])
+
+        # --- Added ambient RNA background test logic on top of K-Means cells ---
+        if strict_cell_calling:
+            logger.info("Applying ambient RNA background test logic to further refine cells...")
+            cell_identify_R = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "utils", "cell_identify.R")
+            raw_matrix_dir = os.path.join(gexstep3dir, "raw_feature_bc_matrix")
+            tmp_filtered_dir = os.path.join(gexstep3dir, "tmp_emptydrops_filtered_feature_bc_matrix")
+            expect_cells = kwargs.get("expected_cells", kwargs.get("expect_cells", 3000))
+            
+            # 直接执行 R 脚本
+            args = ["Rscript", cell_identify_R, "-i", raw_matrix_dir, "-o", tmp_filtered_dir, "-e", str(expect_cells)]
+            logger.info("Running cell_identify.R...")
+            cmd_execute(args, check=False)
+            logger.info("cell_identify.R completed.")
+            
+            # 读取生成的细胞列表
+            emptydrops_barcodes_file = os.path.join(tmp_filtered_dir, "barcodes.tsv.gz")
+            emptydrops_cells = []
+            
+            if os.path.exists(emptydrops_barcodes_file):
+                with gzip.open(emptydrops_barcodes_file, 'rt') as f:
+                    for line in f:
+                        emptydrops_cells.append(line.strip())
+                logger.info(f"Found {len(emptydrops_cells)} cells from ambient RNA test.")
+                
+                # 与 K-Means 细胞做交集判断
+                if emptydrops_cells:
+                    joint_cb_set = set(joint_cb_list)
+                    emptydrops_cells_set = set(emptydrops_cells)
+                    final_cb_list = list(joint_cb_set.intersection(emptydrops_cells_set))
+                    logger.info(f"Intersected cells: {len(final_cb_list)}")
+                    joint_cb_list = final_cb_list
+                else:
+                    logger.warning("No cells found in barcodes.tsv.gz. Using K-Means cells.")
+            else:
+                logger.warning("barcodes.tsv.gz not found. Using K-Means cells.")
+        # ---------------------------------------------------------
 
     merged_df['is_cell'] = np.where(merged_df['barcode'].isin(joint_cb_list), 1, 0)
     merged_df.drop('n_fragment', axis=1, inplace=True)
@@ -614,6 +661,8 @@ def runpipe(bam:str, outdir:str, samplename:str, gexoutdir:str, refpath:str,
     chunck_count = 0
     for df in csv_reader:
         df = df.loc[df["barcode"].isin(joint_cb_list), :].reset_index(drop=True)
+        if len(df["barcode"]) ==0:
+            continue
         rep = df["reads"]
         df = df.drop(["reads"], axis=1)
         idx = df.index.repeat(rep)

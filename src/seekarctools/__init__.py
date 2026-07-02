@@ -2,12 +2,13 @@ import os
 import importlib
 import click
 from seekarctools.arc import arc
+from seekarctools.rna import rna
 from seekarctools.utils import utils
 from seekarctools.utils._version import __version__
 from seekarctools.utils import helper
 
-@click.group(context_settings=dict(help_option_names=["-h", "--help"]))
-@click.version_option(version=__version__, message="%(version)s")
+@click.group(help=f"seekarctools {__version__}", context_settings=dict(help_option_names=["-h", "--help"]))
+@click.version_option(version=__version__, message="seekarctools %(version)s")
 @click.option("--debug", is_flag=True, default=False, help="debug flag.")
 @click.pass_context
 def cli(ctx, debug):
@@ -20,4 +21,5 @@ def cli(ctx, debug):
     importlib.reload(helper)
 
 cli.add_command(arc)
+cli.add_command(rna)
 cli.add_command(utils)

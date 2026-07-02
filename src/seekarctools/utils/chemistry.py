@@ -22,12 +22,21 @@ CHEMISTRY = {
         'sc5p': None,
         'match_type': (1,),
     },
+    "DD_AG_RNA":{
+        'shift': False,
+        'structure': 'B17U12X7',
+        'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
+        'adapter1': [["TTGCTGT", "5"], ["AAGCAGTGGTATCAACGCAGAGTACATGG", "3"], ], ## 7F TSO
+        'adapter2': [["CCATGTACTCTGCGTTGATACCACTGCTT", "5"], ["AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT", "3"], ], ## TSO-rev SP1-rev
+        'sc5p': None,
+        'match_type': (1,),
+    },    
     "DD_AA":{
         'shift': False,
         'structure': 'B17U12',
         'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
         'adapter1': [["CTGTCTCTTATACACATCTCCGAGCCCACGAGAC", "3"], ["ACACTCTTTCCCTACACGACGCTCTTCCGATCT", "5"]], ## SP2 SP1 17L19ME, ["CGTCCGTCGTTGCTCGTAGATGTGTATAAGAGACAG", "5"], ["AGATGTGTATAAGAGACAG", "5"]
-        'adapter2': [["GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG", "5"], ["GGTGATTAACGATGCATTAGATGTGTATAAGAGACAG","5"], ["CTGTCTCTTATACACATCTACGAGCAACGACGGACG", "3"]], ## SP2-rev zhixiaoling 17L19ME-rev
+        'adapter2': [["GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG", "5"], ["CTGTCTCTTATACACATCTACGAGCAACGACGGACG", "3"]], ## SP2-rev zhixiaoling ["AGATGTGTATAAGAGACAG","5"],  17L19ME-rev
         'match_type': (1,),
     },
     "DD5_AG":{

@@ -1,8 +1,8 @@
 import re
 import sys
-from subprocess import run
 from collections import defaultdict
 from xopen import xopen
+from .wrappers import cmd_execute
 
 
 def gtfstat(gtf, feature="gene", key='gene_type'):
@@ -83,5 +83,5 @@ def mkref(fa, gtf, genomeDir, runThreadN=8, star_path='STAR',
             star_opt='--genomeSAindexNbases 14 --genomeChrBinNbits 18 --genomeSAsparseD 3 --limitGenomeGenerateRAM 17179869184'):
     cmd = (f'{star_path} --runMode genomeGenerate --runThreadN {runThreadN} --genomeDir {genomeDir} '
            f'--genomeFastaFiles {fa} --sjdbGTFfile {gtf} {star_opt} ')
-    run(cmd)
+    cmd_execute(cmd, check=True)
 

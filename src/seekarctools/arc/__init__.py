@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 import click
 from ..utils.chemistry import CHEMISTRY
@@ -148,8 +147,11 @@ def astep2(obj, **kwargs):
 @click.option("--broad", is_flag=True, default=False, show_default=True, help="This option facilitates broad peak calling, producing results in the UCSC gappedPeak format which encapsulates a nested structure of peaks.")
 @click.option("--broad_cutoff", default=0.1, show_default=True, help="Cutoff for the broad region.")
 @click.option("--min_atac_count", default=None, show_default=True, help="Cell caller override: define the minimum number of ATAC transposition events in peaks (ATAC counts) for a cell barcode. Need to be used together with --min_gex_comnt.")
-@click.option("--min_gex_count", default=None, show_default=True, help="Cell caller override: define the minimum number of GEX UMI counts for a cell barcode. Need to be used together with --min_atac_count.")
+@click.option("--min_gex_count", default=None, type=int, show_default=True, help="Cell caller override: define the minimum number of GEX UMI counts for a cell barcode. Need to be used together with --min_atac_count.")
 @click.option("--retry", is_flag=True, default=False, show_default=True, hidden=True, help="Skip the alignment step and rerun astep3.")
+@click.option("--keep_mito", is_flag=True, default=False, show_default=True, help="Retain mitochondrial (chrM/M/chrMT/MT) reads. If not provided, they are filtered out by default.")
+@click.option("--strict_cell_calling", is_flag=True, default=False, show_default=True, help="Enable strict cell calling by applying ambient RNA background testing on top of K-Means.")
+@click.option("--max_cells", default=None, type=int, show_default=True, help="Maximum number of auto-called cells to output. If not provided, no upper limit is applied.")
 @click.pass_obj
 def astep3(obj, **kwargs):
     from .astep3 import runpipe
@@ -243,10 +245,16 @@ def report(obj, **kwargs):
               help="Cutoff for the broad region.")
 @click.option("--min_atac_count", default=None, show_default=True, 
               help="Cell caller override: define the minimum number of ATAC transposition events in peaks (ATAC counts) for a cell barcode.")
-@click.option("--min_gex_count", default=None, show_default=True, 
+@click.option("--min_gex_count", default=None, type=int, show_default=True, 
               help="Cell caller override: define the minimum number of GEX UMI counts for a cell barcode.")
 @click.option("--retry", is_flag=True, default=False, show_default=True, hidden=True, 
               help="Skip the alignment step and rerun astep3.")
+@click.option("--keep_mito", is_flag=True, default=False, show_default=True, 
+              help="Retain mitochondrial (chrM/M/chrMT/MT) reads. If not provided, they are filtered out by default.")
+@click.option("--strict_cell_calling", is_flag=True, default=False, show_default=True, 
+              help="Enable strict cell calling by applying ambient RNA background testing on top of K-Means.")
+@click.option("--max_cells", default=None, type=int, show_default=True, 
+              help="Maximum number of auto-called cells to output. If not provided, no upper limit is applied.")
 
 def run(obj, **kwargs):
     logger.info("Check the genomeDir path...")
@@ -341,7 +349,12 @@ def run(obj, **kwargs):
 
     if "astep4" in obj["steps"]:
         from .astep4 import do_signac
-        do_signac(**kwargs)
+        try:
+            do_signac(**kwargs)
+        except SystemExit as e:
+            logger.warning(f"astep4 (do_signac) execution failed, error code: {e.code}, continuing with subsequent steps...")
+        except Exception as e:
+            logger.warning(f"astep4 (do_signac) execution failed, error message: {str(e)}, continuing with subsequent steps...")
 
     kwargs["outdir"] = os.path.join(sampleoutdir, 'outs')
     from .report_arc import report
@@ -365,8 +378,11 @@ def run(obj, **kwargs):
     cmd_execute(cmd5, check=True)
     cmd6 = f"cp {peakfile} {kwargs['outdir']}"
     cmd_execute(cmd6, check=True)
-    cmd7 = f"mv {rds_file} {kwargs['outdir']}"
-    cmd_execute(cmd7, check=True)
+    if os.path.exists(rds_file):
+        cmd7 = f"mv {rds_file} {kwargs['outdir']}"
+        cmd_execute(cmd7, check=True)
+    else:
+        logger.warning(f"rds_file does not exist: {rds_file}, skipping move operation")
 
 @arc.command(help="Skip the alignment step and rerun astep3. Retry call peaks or cells.")
 @click.pass_obj
@@ -396,8 +412,14 @@ def run(obj, **kwargs):
               help="Cutoff for the broad region.")
 @click.option("--min_atac_count", default=None, show_default=True, 
               help="Cell caller override: define the minimum number of ATAC transposition events in peaks (ATAC counts) for a cell barcode.")
-@click.option("--min_gex_count", default=None, show_default=True, 
+@click.option("--min_gex_count", default=None, type=int, show_default=True, 
               help="Cell caller override: define the minimum number of GEX UMI counts for a cell barcode.")
+@click.option("--keep_mito", is_flag=True, default=False, show_default=True, 
+              help="Retain mitochondrial (chrM/M/chrMT/MT) reads. If not provided, they are filtered out by default.")
+@click.option("--strict_cell_calling", is_flag=True, default=False, show_default=True, 
+              help="Enable strict cell calling by applying ambient RNA background testing on top of K-Means.")
+@click.option("--max_cells", default=None, type=int, show_default=True, 
+              help="Maximum number of auto-called cells to output. If not provided, no upper limit is applied.")
 
 def retry(obj, **kwargs):
     kwargs["retry"] = True
@@ -434,7 +456,12 @@ def retry(obj, **kwargs):
     kwargs["atacjson"] = os.path.join(kwargs["outdir"], f"{kwargs['atacname']}_summary.json")
 
     from .astep4 import do_signac
-    do_signac(**kwargs)
+    try:
+        do_signac(**kwargs)
+    except SystemExit as e:
+        logger.warning(f"astep4 (do_signac) execution failed, error code: {e.code}, continuing with subsequent steps...")
+    except Exception as e:
+        logger.warning(f"astep4 (do_signac) execution failed, error message: {str(e)}, continuing with subsequent steps...")
 
     # report
     kwargs["outdir"] = os.path.join(sampleoutdir, 'outs')
@@ -452,5 +479,14 @@ def retry(obj, **kwargs):
     cmd_execute(cmd5, check=True)
     cmd6 = f"cp {peakfile} {kwargs['outdir']}"
     cmd_execute(cmd6, check=True)
-    cmd7 = f"mv {rds_file} {kwargs['outdir']}"
-    cmd_execute(cmd7, check=True)
+    if os.path.exists(rds_file):
+        cmd7 = f"mv {rds_file} {kwargs['outdir']}"
+        cmd_execute(cmd7, check=True)
+    else:
+        logger.warning(f"rds_file does not exist: {rds_file}, skipping move operation")
+        old_rds_file = os.path.join(kwargs["outdir"], f"{kwargs['samplename']}.rds")
+        rename_rds_file = os.path.join(kwargs["outdir"], f"{kwargs['samplename']}_old.rds")
+        if os.path.exists(old_rds_file):
+            logger.warning(f"Detected RDS files from the previous analysis; renaming {old_rds_file} to {rename_rds_file}")
+            cmd8 = f"mv {old_rds_file} {rename_rds_file}"
+            cmd_execute(cmd8, check=True)

@@ -41,6 +41,7 @@ setwd(outdir)
 
 # multicore
 options(future.globals.maxSize = as.integer(memory) * 1024 ^ 3)
+options(future.rng.onMisuse = "ignore")
 plan("multicore", workers = as.integer(core))
 plan()
 
@@ -48,52 +49,69 @@ gex_data <- Read10X(data.dir = gex_matrix)
 obj <- CreateSeuratObject(counts = gex_data, assay = "RNA")
 atac_data <- Read10X(data.dir = atac_matrix)
 
-# read gtf
-gtf_data <- rtracklayer::import(ref_gtf, format = "gtf")
-# make GRanges obj
-mc <- mcols(gtf_data)
-
-if ("gene_type" %in% colnames(mc)) {
-      mcols(gtf_data)$gene_biotype <- mcols(gtf_data)$gene_type
-    } else if ("biotype" %in% colnames(mc)) {
-      mcols(gtf_data)$gene_biotype <- mcols(gtf_data)$biotype
-    } else if ("gene_biotype" %in% colnames(mc)) {
-      cat("There is a gene_biotype column in GTF.\n")
-    } else {
-      mcols(gtf_data)$gene_biotype <- rep("protein_coding", length(mc$gene_id))
-    }
-
-# Check and replace the NA value in gene_fiotype with 'proteino_comding'
-na_indices <- is.na(mcols(gtf_data)$gene_biotype)
-if (any(na_indices)) {
-  mcols(gtf_data)$gene_biotype[na_indices] <- "protein_coding"
-  cat("Replaced NA values in gene_biotype with 'protein_coding'.\n")
+# read gtf using fast and robust method (data.table + stringi)
+cat("Reading GTF using fast and robust method...\n")
+if (!requireNamespace("data.table", quietly = TRUE) || !requireNamespace("stringi", quietly = TRUE)) {
+  cat("data.table or stringi not found, falling back to robust read.table method...\n")
+  gtf_df <- read.table(ref_gtf, sep = "\t", header = FALSE, quote = "", comment.char = "#", stringsAsFactors = FALSE)
+  colnames(gtf_df) <- c("seqnames", "source", "feature", "start", "end", "score", "strand", "frame", "attributes")
+  
+  extract_attr <- function(text, key) {
+    pattern <- paste0(key, ' "([^"]*)"')
+    matches <- regexec(pattern, text)
+    res <- regmatches(text, matches)
+    sapply(res, function(x) if(length(x) > 1) x[2] else NA)
+  }
+  
+  gtf_df$gene_id <- extract_attr(gtf_df$attributes, "gene_id")
+  gtf_df$gene_name <- extract_attr(gtf_df$attributes, "gene_name")
+  gtf_df$transcript_id <- extract_attr(gtf_df$attributes, "transcript_id")
+  gtf_df$gene_biotype <- extract_attr(gtf_df$attributes, "gene_biotype")
+  if (all(is.na(gtf_df$gene_biotype))) {
+    gtf_df$gene_biotype <- extract_attr(gtf_df$attributes, "gene_type")
+  }
+} else {
+  library(data.table)
+  library(stringi)
+  # 使用 cmd 直接在系统层面过滤掉无用 feature，极大节省内存
+  gtf_df <- fread(
+    cmd = paste("grep -v '^#'", ref_gtf, "| grep -E '\t(gene|transcript|exon|CDS|cds|UTR|utr|gap)\t'"),
+    sep = "\t", header = FALSE, quote = "", 
+    col.names = c("seqnames", "source", "feature", "start", "end", "score", "strand", "frame", "attributes")
+  )
+  
+  fast_extract <- function(text, key) {
+    pattern <- paste0(key, ' "([^"]*)"')
+    res <- stri_match_first_regex(text, pattern)
+    return(res[, 2])
+  }
+  
+  gtf_df[, `:=`(
+    gene_id = fast_extract(attributes, "gene_id"),
+    gene_name = fast_extract(attributes, "gene_name"),
+    transcript_id = fast_extract(attributes, "transcript_id"),
+    gene_biotype = fast_extract(attributes, "gene_biotype")
+  )]
+  
+  if (all(is.na(gtf_df$gene_biotype))) {
+    gtf_df[, gene_biotype := fast_extract(attributes, "gene_type")]
+  }
+  data.table::setDF(gtf_df)
 }
 
-if (!("gene_name" %in% colnames(mc))) {
-  mcols(gtf_data)$gene_name <- mcols(gtf_data)$gene_id
-  cat("gene_name do not exist, use gene_id instead\n")
+# 逻辑补全
+gtf_df$gene_biotype[is.na(gtf_df$gene_biotype)] <- "protein_coding"
+gtf_df$gene_name[is.na(gtf_df$gene_name)] <- gtf_df$gene_id[is.na(gtf_df$gene_name)]
+gtf_df$tx_id <- gtf_df$transcript_id
+gtf_df$tx_id[is.na(gtf_df$tx_id)] <- gtf_df$gene_id[is.na(gtf_df$tx_id)]
+
+# 转换为 GRanges
+gtf_filter <- makeGRangesFromDataFrame(gtf_df, keep.extra.columns = TRUE)
+gtf_filter$type <- gtf_df$feature
+# 清洗下划线
+if (any(grepl("_", gtf_filter$gene_name, fixed = TRUE))) {
+  gtf_filter$gene_name <- gsub("_", "-", gtf_filter$gene_name, fixed = TRUE)
 }
-
-# Check and replace the NA value in gene_name with gene_id
-missing_names <- is.na(mcols(gtf_data)$gene_name)
-if (any(missing_names)) {
-  mcols(gtf_data)$gene_name[missing_names] <- mcols(gtf_data)$gene_id[missing_names]
-  cat("gene_name exist NA value, use gene_id instead\n")
-}
-
-if ("tx_id" %in% colnames(mc)) {
-      cat("There is a tx_id column in GTF.\n")
-    } else if ("transcript_id" %in% colnames(mc)) {
-      mcols(gtf_data)$tx_id <- mcols(gtf_data)$transcript_id
-    } else {
-      mcols(gtf_data)$tx_id <- mcols(gtf_data)$gene_id
-      cat("transcript_id do not exist, use gene_id instead\n")
-    }
-
-keep_cols <- c("tx_id", "gene_name", "gene_id", "gene_biotype", "type")
-mcols(gtf_data) <- mcols(gtf_data)[, keep_cols]
-gtf_filter <- gtf_data[gtf_data$type %in% c("CDS", "cds", "UTR", "utr", "exon", "gap")]
 
 
 obj[["ATAC"]] <- CreateChromatinAssay(counts = atac_data, sep = c(":", "-"), fragments = fragpath, annotation = gtf_filter)
@@ -110,13 +128,39 @@ obj@meta.data <- obj@meta.data %>% dplyr::rename("mito" = "percent.mito")
 # RNA normalized
 obj <- NormalizeData(obj)
 obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000)
-obj <- ScaleData(obj, vars.to.regress = "mito")
-obj <- RunPCA(obj)
+
+# 健壮性改进：检查 mito 方差，若无方差则跳过回归
+mito_values <- obj@meta.data$mito
+mito_variance <- var(mito_values, na.rm = TRUE)
+if (is.na(mito_variance) || mito_variance == 0) {
+  cat("Warning: mito variance is zero or NA, skipping regression in ScaleData\n")
+  obj <- ScaleData(obj)
+} else {
+  obj <- ScaleData(obj, vars.to.regress = "mito")
+}
+
+# 健壮性改进：动态调整 PCA 维数和邻居搜索维数
+num_cells <- ncol(obj)
+npcs_to_use <- min(50, num_cells - 1)
+obj <- RunPCA(obj, npcs = npcs_to_use)
+
 # RNA dimensionality reduction & clustering
-obj <- FindNeighbors(obj, dims = 1:30)
-obj <- FindClusters(obj, resolution = 0.8)
-obj <- RunTSNE(obj, dims = 1:30,check_duplicates = FALSE)
-obj <- RunUMAP(obj, dims = 1:30)
+dims_to_use <- 1:min(30, npcs_to_use)
+# 健壮性改进：动态调整邻居数和聚类分辨率，防止低细胞量时产生过多碎片化 cluster
+k_param <- min(20, num_cells - 1)
+res_to_use <- ifelse(num_cells < 100, 0.2, 0.8)
+obj <- FindNeighbors(obj, dims = dims_to_use, k.param = k_param)
+obj <- FindClusters(obj, resolution = res_to_use)
+
+# 动态计算 perplexity 和 neighbors 避免细胞数过少时报错
+num_cells <- ncol(obj)
+tsne_perplexity <- min(30, floor((num_cells - 1) / 3))
+umap_neighbors <- min(30, num_cells - 1)
+cat("RNA t-SNE perplexity set to:", tsne_perplexity, "\n")
+cat("RNA UMAP n.neighbors set to:", umap_neighbors, "\n")
+
+obj <- RunTSNE(obj, dims = dims_to_use, check_duplicates = FALSE, perplexity = tsne_perplexity)
+obj <- RunUMAP(obj, dims = dims_to_use, n.neighbors = umap_neighbors)
 # RNA tsne
 tsne_loci <- as.data.frame(Embeddings(obj, reduction='tsne'))
 tsne_loci <- cbind(tsne_loci, obj[[]])
@@ -130,9 +174,30 @@ write.table(tsne_loci, file='gex_tsne_umi.xls',
 # diff table
 features_df <- read.table(file.path(gex_matrix, 'features.tsv.gz'), sep="\t")
 names(features_df)[1:2] <- c('Ensembl', 'gene')
-obj.markers <- FindAllMarkers(obj, min.pct = 0.1, logfc.threshold = 0.25, only.pos = TRUE) %>%
-    left_join(features_df, by='gene') %>% relocate(Ensembl, gene)
-obj.markers$Ensembl[is.na(obj.markers$Ensembl)] <- "na"
+
+# 健壮性改进：检查分群数量并安全处理 FindAllMarkers
+if (length(unique(Idents(obj))) > 1) {
+    obj.markers <- tryCatch({
+        FindAllMarkers(obj, min.pct = 0.1, logfc.threshold = 0.25, only.pos = TRUE)
+    }, error = function(e) {
+        warning("FindAllMarkers failed: ", e$message)
+        return(NULL)
+    })
+    
+    if (!is.null(obj.markers) && nrow(obj.markers) > 0) {
+        obj.markers <- obj.markers %>%
+            left_join(features_df, by='gene') %>% 
+            relocate(Ensembl, gene)
+        obj.markers$Ensembl[is.na(obj.markers$Ensembl)] <- "na"
+    } else {
+        cat("No marker genes found.\n")
+        obj.markers <- data.frame(Ensembl=character(), gene=character(), p_val=numeric(), avg_log2FC=numeric(), pct.1=numeric(), pct.2=numeric(), p_val_adj=numeric(), cluster=character())
+    }
+} else {
+    cat("Only one cluster found, skipping FindAllMarkers.\n")
+    obj.markers <- data.frame(Ensembl=character(), gene=character(), p_val=numeric(), avg_log2FC=numeric(), pct.1=numeric(), pct.2=numeric(), p_val_adj=numeric(), cluster=character())
+}
+
 write.table(obj.markers, file='gex_FindAllMarkers.xls', row.names=FALSE, sep="\t", quote=FALSE)
 
 
@@ -145,10 +210,28 @@ obj <- TSSEnrichment(obj)
 obj <- FindTopFeatures(obj, min.cutoff = 5)
 obj <- RunTFIDF(obj)
 obj <- RunSVD(obj)
-obj <- RunUMAP(object = obj, reduction = 'lsi', dims = 2:30, reduction.name = "atacumap", reduction.key = "atacumap_")
-obj <- RunTSNE(obj, reduction = 'lsi', dims = 2:30, reduction.name = "atactsne", reduction.key = "atactsne_", check_duplicates = FALSE)
-obj <- FindNeighbors(object = obj, reduction = 'lsi', dims = 2:30)
-obj <- FindClusters(object = obj, verbose = FALSE, algorithm = 3)
+
+# 动态调整 ATAC 维数
+num_cells <- ncol(obj)
+# LSI 第一维通常是测序深度，一般从第 2 维开始
+atac_dims <- 2:min(30, num_cells - 1)
+if (length(atac_dims) < 2) atac_dims <- 1:min(30, num_cells - 1)
+
+umap_neighbors <- min(30, num_cells - 1)
+obj <- RunUMAP(object = obj, reduction = 'lsi', dims = atac_dims, reduction.name = "atacumap", reduction.key = "atacumap_", n.neighbors = umap_neighbors)
+
+# 动态计算 ATAC t-SNE perplexity
+tsne_perplexity <- min(30, floor((num_cells - 1) / 3))
+cat("ATAC t-SNE perplexity set to:", tsne_perplexity, "\n")
+cat("ATAC UMAP n.neighbors set to:", umap_neighbors, "\n")
+
+obj <- RunTSNE(obj, reduction = 'lsi', dims = atac_dims, reduction.name = "atactsne", reduction.key = "atactsne_", check_duplicates = FALSE, perplexity = tsne_perplexity)
+
+# ATAC 也需要动态邻居数和分辨率
+k_param_atac <- min(20, num_cells - 1)
+res_to_use_atac <- ifelse(num_cells < 100, 0.2, 0.8)
+obj <- FindNeighbors(object = obj, reduction = 'lsi', dims = atac_dims, k.param = k_param_atac)
+obj <- FindClusters(object = obj, verbose = FALSE, algorithm = 3, resolution = res_to_use_atac)
 # ATAC tsne
 tsne_loci <- as.data.frame(Embeddings(obj, reduction='atactsne'))
 tsne_loci <- cbind(tsne_loci, obj[[]])
@@ -166,7 +249,13 @@ DefaultAssay(obj) <- "ATAC"
 
 tryCatch({
   obj <- RegionStats(obj, genome = fa_data)
-  obj <- LinkPeaks(object = obj, peak.assay = "ATAC", expression.assay = "RNA")
+  obj <- LinkPeaks(
+    object = obj, 
+    peak.assay = "ATAC", 
+    expression.assay = "RNA", 
+    score_cutoff = 0.01, 
+    distance = 1e6
+  )
   saveRDS(obj,file='joint_peak_link_gene.rds')
   # count link
   linked_peaks <- Links(obj)
