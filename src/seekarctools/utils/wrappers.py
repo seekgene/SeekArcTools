@@ -108,7 +108,15 @@ def unzip_wrapper(gzfile:str, outfile:str):
     cmd_execute(args, check=True)
     return outfile
 
-def qualimap_wrapper(bam:str, gtf:str, outdir:str, SC5P:bool=None, qualimap_path:str="qualimap", **kwargs):
+def qualimap_wrapper(
+    bam: str,
+    gtf: str,
+    outdir: str,
+    SC5P: bool = None,
+    qualimap_path: str = "qualimap",
+    pairend_alignment: bool = False,
+    **kwargs
+):
     strand = {
         'f': 'strand-specific-forward',
         'r': 'strand-specific-reverse',
@@ -128,6 +136,8 @@ def qualimap_wrapper(bam:str, gtf:str, outdir:str, SC5P:bool=None, qualimap_path
         qualimap_path, 'rnaseq', '-outformat', 'PDF', '-outdir', outdir, '-bam',
         bam, '-gtf', gtf, '-p', strand[s], f'--java-mem-size={int(available_memory)}G'
     ]
+    if pairend_alignment:
+        args.append("-pe")
 
     my_env = os.environ.copy()
     if 'DISPLAY' in my_env:
@@ -156,9 +166,17 @@ def check_gtf_region(gtf, region):
     os.exit(1)
 
 def featureCounts_wrapper(
-    bam:str, gtf:str, gexname:str, outdir:str, region:str, SC5P:bool=None, 
-    core:int=4, featureCounts_path="featureCounts", **kwargs
-    ):
+    bam: str,
+    gtf: str,
+    gexname: str,
+    outdir: str,
+    region: str,
+    SC5P: bool = None,
+    core: int = 4,
+    featureCounts_path: str = "featureCounts",
+    pairend_alignment: bool = False,
+    **kwargs
+):
     outcounts = os.path.join(outdir, 'counts.txt')
     region = check_gtf_region(gtf, region)
     s = 0
@@ -166,10 +184,13 @@ def featureCounts_wrapper(
         s = 2
 
     args = [
-        featureCounts_path, "-T", core, "-t", region , "-s", s, "-M", "-O", "-g", "gene_id",
-        "--fracOverlap", 0.5, "-a", gtf, "-o", outcounts, 
+        featureCounts_path, "-T", core, "-t", region, "-s", s, "-M", "-O", "-g", "gene_id",
+        "--fracOverlap", 0.5, "-a", gtf, "-o", outcounts,
     ]
-    
+
+    if pairend_alignment:
+        args.append("-p")
+
     args = args + ["-R", "BAM", bam]
     cmd_execute(args, check=True)
     return os.path.join(outdir, f"{outdir}/{os.path.basename(bam)}.featureCounts.bam")

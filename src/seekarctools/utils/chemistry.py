@@ -22,6 +22,15 @@ CHEMISTRY = {
         'sc5p': None,
         'match_type': (1,),
     },
+    "DD_AG_RNA":{
+        'shift': False,
+        'structure': 'B17U12X7',
+        'barcode': (os.path.join(__srcdir, 'barcode', 'P3CBGB', 'P3CB.barcode.txt.gz'),),
+        'adapter1': [["TTGCTGT", "5"], ["AAGCAGTGGTATCAACGCAGAGTACATGG", "3"], ], ## 7F TSO
+        'adapter2': [["CCATGTACTCTGCGTTGATACCACTGCTT", "5"], ["AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT", "3"], ], ## TSO-rev SP1-rev
+        'sc5p': None,
+        'match_type': (1,),
+    },    
     "DD_AA":{
         'shift': False,
         'structure': 'B17U12',

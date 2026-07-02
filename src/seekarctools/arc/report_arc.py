@@ -7,6 +7,8 @@ from ..utils.helper import logger
 
 def pre_diff_data(diff_table, n=50):
     df = pd.read_table(diff_table)
+    if 'cluster' not in df.columns or df.empty:
+        return []
     tmp = df.groupby('cluster').apply(lambda x: x.sort_values(by='avg_log2FC', ascending=False).head(n))
     diff_data = tmp.loc[:,['Ensembl', 'gene', 'avg_log2FC', 'p_val_adj','cluster']].to_dict('records')
     return diff_data
@@ -103,8 +105,18 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
         gex_tsne2 = []
         gex_depth = []
         gex_cluster = []
+        gex_median_mito = "0.00%"
     else:
         gex_tsne1, gex_tsne2, gex_depth, gex_cluster = get_gex_tsne(gex_tsnefile)
+        gex_df = pd.read_table(gex_tsnefile, index_col=0)
+        if "mito" in gex_df.columns:
+            median_mito = gex_df["mito"].median()
+            if pd.isna(median_mito):
+                gex_median_mito = "0.00%"
+            else:
+                gex_median_mito = f'{median_mito:.2f}%'
+        else:
+            gex_median_mito = "0.00%"
 
     atac_tsnefile = os.path.join(atacdir, 'step4', 'atac_tsne_umi.xls')
     if not os.path.exists(atac_tsnefile):
@@ -249,6 +261,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
             'GEX_Mean_raw_reads_per_cell,'
             'GEX_Median_UMI_counts_per_cell,'
             'GEX_Median_genes_per_cell,'
+            'GEX_Mito_Median,'
             'GEX_Sequencing_Saturation,'
             'GEX_Q30_bases_in_UMI,'
             'GEX_Q30_bases_in_barcode,'
@@ -292,6 +305,7 @@ def report(gexjson, atacjson, outdir, samplename, rawname, **kwargs):
             float(f'{gex_summary["cells"]["Mean Reads per Cell"]:.4f}'),
             gex_summary["cells"]["Median UMI Counts per Cell"],
             gex_summary["cells"]["Median Genes per Cell"],
+            gex_median_mito,
             float(f'{gex_summary["cells"]["Sequencing Saturation"]:.4f}'),
             float(f'{u30_base/u_total_base:.4f}'),
             float(f'{b30_base/b_total_base:.4f}'),

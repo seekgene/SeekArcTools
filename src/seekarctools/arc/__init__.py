@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 import click
 from ..utils.chemistry import CHEMISTRY
@@ -86,7 +85,7 @@ def estep2(obj, **kwargs):
 @click.option("--umi_correct_method", type=click.Choice(["cluster", "adjacency", "directional"]), default="adjacency", show_default=True, help="cluster, adjacency, directional")
 @click.pass_obj
 def estep3(obj, **kwargs):
-    from .estep3 import count
+    from .estep3 import count, cell_calling
     count(**kwargs)
 
 @arc.command(help="ATAC extract cell barcode and umi. cut reads to preserve valid sequences.")
@@ -148,8 +147,11 @@ def astep2(obj, **kwargs):
 @click.option("--broad", is_flag=True, default=False, show_default=True, help="This option facilitates broad peak calling, producing results in the UCSC gappedPeak format which encapsulates a nested structure of peaks.")
 @click.option("--broad_cutoff", default=0.1, show_default=True, help="Cutoff for the broad region.")
 @click.option("--min_atac_count", default=None, show_default=True, help="Cell caller override: define the minimum number of ATAC transposition events in peaks (ATAC counts) for a cell barcode. Need to be used together with --min_gex_comnt.")
-@click.option("--min_gex_count", default=None, show_default=True, help="Cell caller override: define the minimum number of GEX UMI counts for a cell barcode. Need to be used together with --min_atac_count.")
+@click.option("--min_gex_count", default=None, type=int, show_default=True, help="Cell caller override: define the minimum number of GEX UMI counts for a cell barcode. Need to be used together with --min_atac_count.")
 @click.option("--retry", is_flag=True, default=False, show_default=True, hidden=True, help="Skip the alignment step and rerun astep3.")
+@click.option("--keep_mito", is_flag=True, default=False, show_default=True, help="Retain mitochondrial (chrM/M/chrMT/MT) reads. If not provided, they are filtered out by default.")
+@click.option("--strict_cell_calling", is_flag=True, default=False, show_default=True, help="Enable strict cell calling by applying ambient RNA background testing on top of K-Means.")
+@click.option("--max_cells", default=None, type=int, show_default=True, help="Maximum number of auto-called cells to output. If not provided, no upper limit is applied.")
 @click.pass_obj
 def astep3(obj, **kwargs):
     from .astep3 import runpipe
@@ -243,10 +245,16 @@ def report(obj, **kwargs):
               help="Cutoff for the broad region.")
 @click.option("--min_atac_count", default=None, show_default=True, 
               help="Cell caller override: define the minimum number of ATAC transposition events in peaks (ATAC counts) for a cell barcode.")
-@click.option("--min_gex_count", default=None, show_default=True, 
+@click.option("--min_gex_count", default=None, type=int, show_default=True, 
               help="Cell caller override: define the minimum number of GEX UMI counts for a cell barcode.")
 @click.option("--retry", is_flag=True, default=False, show_default=True, hidden=True, 
               help="Skip the alignment step and rerun astep3.")
+@click.option("--keep_mito", is_flag=True, default=False, show_default=True, 
+              help="Retain mitochondrial (chrM/M/chrMT/MT) reads. If not provided, they are filtered out by default.")
+@click.option("--strict_cell_calling", is_flag=True, default=False, show_default=True, 
+              help="Enable strict cell calling by applying ambient RNA background testing on top of K-Means.")
+@click.option("--max_cells", default=None, type=int, show_default=True, 
+              help="Maximum number of auto-called cells to output. If not provided, no upper limit is applied.")
 
 def run(obj, **kwargs):
     logger.info("Check the genomeDir path...")
@@ -404,8 +412,14 @@ def run(obj, **kwargs):
               help="Cutoff for the broad region.")
 @click.option("--min_atac_count", default=None, show_default=True, 
               help="Cell caller override: define the minimum number of ATAC transposition events in peaks (ATAC counts) for a cell barcode.")
-@click.option("--min_gex_count", default=None, show_default=True, 
+@click.option("--min_gex_count", default=None, type=int, show_default=True, 
               help="Cell caller override: define the minimum number of GEX UMI counts for a cell barcode.")
+@click.option("--keep_mito", is_flag=True, default=False, show_default=True, 
+              help="Retain mitochondrial (chrM/M/chrMT/MT) reads. If not provided, they are filtered out by default.")
+@click.option("--strict_cell_calling", is_flag=True, default=False, show_default=True, 
+              help="Enable strict cell calling by applying ambient RNA background testing on top of K-Means.")
+@click.option("--max_cells", default=None, type=int, show_default=True, 
+              help="Maximum number of auto-called cells to output. If not provided, no upper limit is applied.")
 
 def retry(obj, **kwargs):
     kwargs["retry"] = True

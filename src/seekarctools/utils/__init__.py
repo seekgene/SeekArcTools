@@ -5,7 +5,7 @@ import click
 def utils(ctx):
     pass
 
-@utils.command(help="gene type summary.")
+@utils.command(hidden=True, help="gene type summary.")
 @click.option('--gtf', type=click.Path(), required=True, help="gtf file.")
 @click.option('--feature', default='gene', show_default=True, help="feature, e.g., gene, transcript")
 @click.option('--key', default='gene_type', show_default=True, help='attribution key, e.g., gene_type')
@@ -13,7 +13,7 @@ def gtfstat(gtf, feature, key='gene_biotype'):
     from .mkref import gtfstat
     gtfstat(gtf, feature, key)
 
-@utils.command(help="gtf filter.")
+@utils.command(hidden=True, help="gtf filter.")
 @click.option('--gtf', type=click.Path(), required=True, help="gtf file.")
 @click.option('--biotype',  multiple=True, help="biotype to keep,  can specify multiple times.")
 @click.option('--key', default='gene_type', show_default=True, help='attribution key, e.g., gene_type')
@@ -21,7 +21,7 @@ def gtffilter(gtf, biotype, key='gene_type'):
     from .mkref import gtffilter
     gtffilter(gtf, biotype, key)
 
-@utils.command(help="make ref.")
+@utils.command(hidden=True, help="make ref.")
 @click.option('--fa', type=click.Path(), required=True, help="fa file.")
 @click.option('--gtf', type=click.Path(), required=True, help="gtf file.")
 @click.option('--genomeDir', 'genomeDir', type=click.Path(), required=True, help="genomeDir.")
@@ -44,7 +44,7 @@ def addtag(inbam, outbam, umifile=None, recursive=False):
     from .addtag import add_tag
     add_tag(inbam, outbam, umifile, recursive)
 
-@utils.command(help="split reference.")
+@utils.command(hidden=True, help="split reference.")
 @click.option("-f", "--fa", type=click.Path(), required=True, help="fasta file.")
 @click.option("-g", "--gtf", type=click.Path(), required=True, help="gtf file.")
 @click.option("-o", "--outdir", required=True, help="output dir.")
@@ -52,7 +52,7 @@ def splitref(fa, gtf, outdir):
     from .splitref import split_ref
     split_ref(fa, gtf, outdir)
 
-@utils.command(help="gtf validator")
+@utils.command(hidden=True, help="gtf validator")
 @click.option("--gtf", "gtf", type=click.Path(), required=True, help="gtf path.")
 @click.option("--newgtf", "new_gtf", default=None, help="modified gtf file. if not set, only do check.")
 @click.option("--gid", "gene_id_str", default="gene_id", show_default=True, help="attribute to extract gene id.")
